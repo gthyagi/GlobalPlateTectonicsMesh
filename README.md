@@ -2,6 +2,12 @@
 
 This project generates **spherical meshes** with **plate tectonics features** for numerical simulations. It reconstructs various geological features using publicly available datasets, providing high-resolution geodynamic models.
 
+## Demo
+![Description of the image](images/sum_1.png)
+Southeast Asian subduction zone slab.
+
+---
+
 ## 📌 Features
 - **Reconstruct slabs** from the **Slab2.0** dataset.
 - **Reconstruct crust and lithosphere thickness** from:
