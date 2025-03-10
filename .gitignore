@@ -1,1 +1,6 @@
 .ipynb_checkpoints/
+src/.DS_Store
+src/GlobalPlateTectonicsMesh.egg-info/
+src/__pycache__/
+examples/.meshes/
+.DS_Store
