@@ -1,3 +1,7 @@
+# ### This script provides brief introduction to `coordinate_transform.py` module
+#
+# @author: Thyagarajulu Gollapalli
+
 import coordinate_transform as ct
 import numpy as np
 import matplotlib.pyplot as plt
@@ -18,14 +22,14 @@ lon_grid, lat_grid = np.meshgrid(lon_arr, lat_arr)
 # Optionally, if you need a combined 2D array where each row is a (lon, lat) pair:
 lonlat_arr = np.column_stack((lon_grid.ravel(), lat_grid.ravel()))
 
-# Create a radius column with a constant value of 6300 for each coordinate
-radius = 6300
-radius_arr = np.full(lonlat_arr.shape[0], radius)
+# Create a depth column with a constant value of 50 km for each coordinate
+depth = 50.
+depth_arr = np.full(lonlat_arr.shape[0], depth)
 
 # Combine lon, lat, and radius into one array
-lonlatrad_arr = np.column_stack((lonlat_arr, radius_arr))
+lonlatdep_arr = np.column_stack((lonlat_arr, depth_arr))
 
-lonlatrad_arr
+lonlatdep_arr
 
 # +
 # Set up a map with Cartopy using PlateCarree projection
@@ -39,30 +43,40 @@ ax.coastlines()
 sc = ax.scatter(lon_grid, lat_grid, color='red', s=20, transform=ccrs.PlateCarree())
 # -
 
+# ### Check cubedsphere transformations
+
 coord_trans = ct.CoordinateTransformCubedsphere(g_lon_min=lon_min, 
                                                 g_lon_max=lon_max,
                                                 g_lat_min=lat_min, 
                                                 g_lat_max=lat_max,)
 
-c_xyz = coord_trans.geo_llr_to_cubedsphere_xyz(lonlatrad_arr)
+c_xyz = coord_trans.geo_lld_to_cubedsphere_xyz(lonlatdep_arr)
 c_xyz
 
-g_llr = coord_trans.cubedsphere_xyz_to_geo_llr(c_xyz)
-g_llr
+g_lld = coord_trans.cubedsphere_xyz_to_geo_lld(c_xyz)
+g_lld
 
-lonlatrad_arr[:,0] = np.mod(lonlatrad_arr[:,0], 360)
-lonlatrad_arr
+lonlatdep_arr[:,0] = np.mod(lonlatdep_arr[:,0], 360)
+lonlatdep_arr
 
-np.isclose(g_llr, lonlatrad_arr)
+if np.any(~np.isclose(g_lld, lonlatdep_arr)):
+    print("At least one element is not close.")
+else:
+    print('Both are close')
+
+# ### Check spherical transformations
 
 coord_trans_sph = ct.CoordinateTransformSphere()
 
-sph_xyz = coord_trans_sph.llr_to_xyz(lonlatrad_arr)
+sph_xyz = coord_trans_sph.lld_to_xyz(lonlatdep_arr)
 sph_xyz
 
-llr = coord_trans_sph.xyz_to_llr(sph_xyz)
-np.round(llr, 1)
+lld = coord_trans_sph.xyz_to_lld(sph_xyz)
+np.round(lld, 1)
 
-np.isclose(g_llr, np.round(llr, 1))
+if np.any(~np.isclose(g_lld, np.round(lld, 1))):
+    print("At least one element is not close.")
+else:
+    print('Both are close')
 
 
