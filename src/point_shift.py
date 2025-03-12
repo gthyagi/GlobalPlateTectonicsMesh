@@ -1,15 +1,15 @@
 """
-Author: G Thyagarajulu
-Original file is downloaded from slab2.0.
-
 pointShift is essentially epCalc, but for a single point.  
 It is used to calculate the endpoint of a vector within the earth given a local lat/lon/dep, strike/dip, and distance.
+
+Author: Thyagarajulu Gollapalli
+Original file is downloaded from slab2.0.
 """
 
 import math
 import numpy as np
 
-def pointShift(lon, lat, dep, dip, strike, mag):
+def PointShift(lon, lat, dep, dip, strike, mag):
     
     # Rotate from strike to direction of motion
     if strike > 270:
