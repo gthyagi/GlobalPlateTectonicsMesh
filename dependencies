@@ -1,0 +1,12 @@
+# Listed the required packages from this code
+
+# src
+numpy
+
+# examples
+pyvista
+pygmt
+matplotlib
+cartopy
+xarray
+cmcrameri
