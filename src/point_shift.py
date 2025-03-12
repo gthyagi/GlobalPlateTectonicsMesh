@@ -7,7 +7,6 @@ Original file is downloaded from slab2.0.
 """
 
 import math
-import numpy as np
 
 def PointShift(lon, lat, dep, dip, strike, mag):
     
