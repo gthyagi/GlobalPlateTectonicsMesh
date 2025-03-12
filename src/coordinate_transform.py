@@ -5,7 +5,6 @@ This file contains classes needed for coordinate transform.
 """
 
 import numpy as np
-import math
 
 class CoordinateTransformSphere(object):
 	"""
