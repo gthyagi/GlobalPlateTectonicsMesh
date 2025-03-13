@@ -1,6 +1,6 @@
 # ### This script provides brief introduction to `coordinate_transform.py` module
 #
-# @author: Thyagarajulu Gollapalli
+# *Author: Thyagarajulu Gollapalli*
 
 import coordinate_transform as ct
 import numpy as np
