@@ -1,6 +1,6 @@
 # ### Here we will plot and understand different datasets provided by slab2
 #
-# @author: Thyagarajulu Gollapalli
+# *Author: Thyagarajulu Gollapalli*
 #
 # Notes: 
 # 1. PyGMT plotting can be challenging—managing all the parameters to fine-tune plot details can be nontrivial and frustrating. If you don't like peaceful mind then go for it.
