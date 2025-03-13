@@ -5,3 +5,5 @@ src/__pycache__/
 examples/.meshes/
 .DS_Store
 examples/*.vtk
+examples/output
+examples/tetgen_1.6
