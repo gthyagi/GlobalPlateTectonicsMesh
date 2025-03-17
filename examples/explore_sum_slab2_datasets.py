@@ -21,6 +21,7 @@ from cmcrameri import cm
 import os
 import pyvista as pv
 import pygmt
+from scipy.interpolate import griddata
 
 import coordinate_transform as ct
 import point_shift as ps
@@ -114,9 +115,15 @@ def plot_grd_subplot_cartopy(grids, cmap_list, series_list, cmap_title_list, nco
         data_array = grids[i]              # Use the provided xarray DataArray
         vmin, vmax, _ = series_list[i]       # Get normalization limits
         norm = colors.Normalize(vmin=vmin, vmax=vmax)
-        im = ax.pcolormesh(data_array.x, data_array.y, data_array,
-                           cmap=cmap_list[i], norm=norm,
-                           transform=ccrs.PlateCarree(), rasterized=True)
+        
+        if isinstance(data_array, xr.core.dataarray.DataArray):
+            im = ax.pcolormesh(data_array.x, data_array.y, data_array,
+                               cmap=cmap_list[i], norm=norm,
+                               transform=ccrs.PlateCarree(), rasterized=True)
+        elif isinstance(data_array, np.ndarray):
+            im = ax.scatter(data_array[:,0], data_array[:,1], c=data_array[:,2], s=1, edgecolor='none',
+                            cmap=cmap_list[i], norm=norm, transform=ccrs.PlateCarree(), rasterized=True)
+        
         ax.coastlines(resolution='50m')      # Add coastlines for context
 
         # Add gridlines with labels on left and bottom
@@ -138,6 +145,10 @@ def plot_grd_subplot_cartopy(grids, cmap_list, series_list, cmap_title_list, nco
     fig.savefig(output_dir_filename, dpi=250)
         
     return fig
+
+# output dir
+output_dir = './output/'
+os.makedirs(output_dir, exist_ok=True)
 
 # +
 # slab2 data dir
@@ -169,7 +180,7 @@ if not os.path.isfile('sum_dep_thk_dip_str.pdf'):
     series_list = [[-600, 0, 12], [0, 150, 15], [0, 80, 8], [0, 360, 18]]
     cmap_title_list = ["Depth (km)", "Thickness (km)", "Dip (°)", "Strike (°)"]
     cmap_list = [cm.hawaii.resampled(12), cm.davos_r.resampled(15), cm.turku.resampled(8), cm.tokyo_r.resampled(18)]
-    fig = plot_grd_subplot_cartopy(grids, cmap_list, series_list, cmap_title_list, ncols=2, output_dir_filename=f'sum_dep_thk_dip_str.pdf')
+    fig = plot_grd_subplot_cartopy(grids, cmap_list, series_list, cmap_title_list, ncols=2, output_dir_filename=f'{output_dir}sum_dep_thk_dip_str.pdf')
 
 
 # -
@@ -192,13 +203,15 @@ def xarray_to_numpy(xda):
 dep_arr, thk_arr, dip_arr, str_arr = [xarray_to_numpy(grid) for grid in grids]
 
 # slab bottom surface array
-bot_surf_dep_arr = np.copy(dep_arr)
+bot_surf_dep_arr_nan = np.zeros_like(dep_arr)
 
 # layer thickness is negative if it is shifted down and positive if it is shifted upward direction
 # top surface depth must be positive
 for i, values in enumerate(dep_arr):
     shift_pt = ps.PointShift(values[0], values[1], -values[2], dip_arr[i][2], str_arr[i][2], -thk_arr[i][2])
-    bot_surf_dep_arr[i][2] = -shift_pt[2]
+    bot_surf_dep_arr_nan[i][0] = shift_pt[0]
+    bot_surf_dep_arr_nan[i][1] = shift_pt[1]
+    bot_surf_dep_arr_nan[i][2] = -shift_pt[2]
 
 
 def numpy_to_xarray(arr):
@@ -211,17 +224,24 @@ def numpy_to_xarray(arr):
     return xr.DataArray(data_2d, coords=[y_coords, x_coords], dims=["y", "x"])
 
 
+def remove_nan_rows(arr):
+    '''
+    Remove rows containing NaN values from the given NumPy array.
+    '''
+    return arr[~np.isnan(arr).any(axis=1)]
+
+
 # +
 # Convert the NumPy arrays back to xarray DataArrays
-bot_surf_dep_xda = numpy_to_xarray(bot_surf_dep_arr)
+bot_surf_dep_arr = remove_nan_rows(bot_surf_dep_arr_nan)
 
 # Plot the bottom surface depth using Cartopy
 if not os.path.isfile('sum_bot_surf_dep.pdf'):
     series_list = [[-700, 0, 14]]
     cmap_title_list = ["Depth (km)"]
     cmap_list = [cm.hawaii.resampled(14)]
-    fig = plot_grd_subplot_cartopy([bot_surf_dep_xda], cmap_list, series_list, cmap_title_list, ncols=1, figsize=(6, 6),
-                                   output_dir_filename=f'sum_bot_surf_dep.pdf', 
+    fig = plot_grd_subplot_cartopy([bot_surf_dep_arr], cmap_list, series_list, cmap_title_list, ncols=1, figsize=(6, 6),
+                                   output_dir_filename=f'{output_dir}sum_bot_surf_dep.pdf', 
                                    left=0.125, right=0.9, bottom=0.11, top=0.98, wspace=0.2, hspace=0.2)
 # -
 
@@ -267,17 +287,17 @@ sph_top_surf
 
 # +
 # get sum slab surface top, bottom in cubedsphere xyz 
-sum_top_surf_c_xyz = coord_trans.geo_llr_to_cubedsphere_xyz(top_surf_pos_dep_arr)
+sum_top_surf_c_xyz = coord_trans.geo_lld_to_cubedsphere_xyz(top_surf_pos_dep_arr)
 print(sum_top_surf_c_xyz)
 
-sum_bot_surf_c_xyz = coord_trans.geo_llr_to_cubedsphere_xyz(bot_surf_pos_dep_arr)
+sum_bot_surf_c_xyz = coord_trans.geo_lld_to_cubedsphere_xyz(bot_surf_pos_dep_arr)
 print(sum_bot_surf_c_xyz)
 
-sph_top_surf_c_xyz = coord_trans.geo_llr_to_cubedsphere_xyz(sph_top_surf)
+sph_top_surf_c_xyz = coord_trans.geo_lld_to_cubedsphere_xyz(sph_top_surf)
 print(sph_top_surf_c_xyz)
 # -
 
-np.round(coord_trans.cubedsphere_xyz_to_geo_llr(sph_top_surf_c_xyz), 2)
+np.round(coord_trans.cubedsphere_xyz_to_geo_lld(sph_top_surf_c_xyz), 2)
 
 # +
 # note: change radius to depth in the coordinate transform class
@@ -297,7 +317,7 @@ plotter = pv.Plotter()
 # Add the point clouds to the plotter
 plotter.add_points(sum_top_surf_cloud, color='red', point_size=2)
 plotter.add_points(sum_bot_surf_cloud, color='blue', point_size=2)
-plotter.add_points(sph_top_surf_cloud, color='green', point_size=2, opacity=0.1)
+plotter.add_points(sph_top_surf_cloud, color='green', point_size=2, opacity=0.01)
 
 
 # Set the background color
@@ -315,13 +335,13 @@ point_cloud = pv.PolyData(sum_top_bot_surf_c_xyz)
 
 # Create a volume mesh using 3D Delaunay triangulation with an alpha parameter
 # The 'alpha' parameter controls the level of detail of the alpha shape
-volume = point_cloud.delaunay_3d(alpha=7.5e-3, tol=1e-3, offset=2.5,)
+volume = point_cloud.delaunay_3d(alpha=5e-3, tol=1e-3, offset=2.5,)
 
 # Extract the surface of the volume mesh to get the alpha shape
 alpha_shape = volume.extract_geometry()
 
 # Option 1: Save the full volumetric mesh
-volume.save("sum_slab_mesh.vtk")
+volume.save(f"{output_dir}sum_slab_mesh.vtk")
 # -
 
 # surface edges
@@ -337,3 +357,6 @@ plotter.show()
 
 # +
 # try open3d alpha shape
+# -
+
+

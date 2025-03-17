@@ -116,10 +116,10 @@ print(sum_top_surf_c_xyz)
 # view mesh and sum surface cloud point
 point_cloud = pv.PolyData(sum_top_surf_c_xyz)
 
-plotter = pv.Plotter()
-plotter.add_mesh(mesh, show_edges=True, opacity=0.1)
-plotter.add_points(point_cloud, color='red', point_size=5)
-plotter.show()
+pl = pv.Plotter()
+pl.add_mesh(mesh, show_edges=True, opacity=0.1)
+pl.add_points(point_cloud, color='red', point_size=3)
+pl.show()
 # -
 
 # ### Create implicit function for slab surface
