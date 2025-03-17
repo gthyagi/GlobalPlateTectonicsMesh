@@ -1,9 +1,10 @@
 """
-pointShift is essentially epCalc, but for a single point.  
+PointShift is essentially epCalc, but for a single point.  
 It is used to calculate the endpoint of a vector within the earth given a local lat/lon/dep, strike/dip, and distance.
 
-Author: Thyagarajulu Gollapalli
 Original file is downloaded from slab2.0.
+
+*Author: Thyagarajulu Gollapalli*
 """
 
 import math

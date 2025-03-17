@@ -1,7 +1,7 @@
 """
-This file contains classes needed for coordinate transform.
+This file contains classes needed for coordinate transformation.
 
-@author: Thyagarajulu Gollapalli
+*Author: Thyagarajulu Gollapalli*
 """
 
 import numpy as np
