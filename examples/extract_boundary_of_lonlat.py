@@ -12,6 +12,8 @@ import extract_boundary_points_in_2d as ebp
 import xarray as xr
 import pygmt
 import point_shift as ps
+import coordinate_transform as ct
+import pyvista as pv
 
 import plotly.graph_objects as go
 import webbrowser
@@ -32,11 +34,11 @@ def remove_nan_rows(arr):
 # +
 # loading slab2 sum data
 slab2_dir = '/Users/tgol0006/PlateTectonicsTools/Slab2_AComprehe/Slab2Distribute_Mar2018/Slab2_TXT/'
-data = np.loadtxt(f'{slab2_dir}sum_slab2_dep_02.23.18.xyz', delimiter=',')
-print(data)
+slab2_data = np.loadtxt(f'{slab2_dir}sum_slab2_dep_02.23.18.xyz', delimiter=',')
+print(slab2_data)
 
 # Remove rows containing NaN values and convert depth to positive values
-sum_dep_arr = remove_nan_rows(data)
+sum_dep_arr = remove_nan_rows(slab2_data)
 sum_dep_arr[:, 2] *= -1
 print(sum_dep_arr)
 
@@ -151,8 +153,8 @@ create_interactive_plot(lon, lat, depth, edges, output_dir)
 # Ensure the path is absolute
 file_path = (Path(output_dir) / 'lonlatdep_bd_interactive_plot.html').resolve()
 
-# Open the file in browser
-webbrowser.open(file_path.as_uri())
+# # Open the file in browser
+# webbrowser.open(file_path.as_uri())
 
 
 # -
@@ -236,56 +238,285 @@ def xarray_to_numpy(xda):
 # converting xarray to numpy array
 dep_arr, thk_arr, dip_arr, str_arr = [xarray_to_numpy(grid) for grid in grids]
 
-depth_values_list = np.linspace(3, 90, 30)
+# depth list
+depth_values_list = np.linspace(5, 200, 40)
+
+depth_values_list
 
 
 def find_matching_indices(dep_arr, boundary_points):
-    # Define structured dtype explicitly (assuming columns are lon, lat, depth)
-    dtype = [('lon', float), ('lat', float)]
+    """
+    Get the indices in dep_arr for boundary points.
 
+    Parameters:
+    dep_arr (ndarray): Array of data points.
+    boundary_points (ndarray): Array of boundary points.
+
+    Returns:
+    ndarray: Indices of matching rows in dep_arr.
+    """
+    
+    dtype = [('lon', float), ('lat', float)] # Define structured dtype explicitly (assuming columns are lon, lat)
     # Convert to structured arrays
     dep_struct = np.array([tuple(np.round(row, 2)) for row in dep_arr[:,0:2]], dtype=dtype)
     boundary_struct = np.array([tuple(np.round(p,2)) for p in boundary_points[:,0:2]], dtype=dtype)
-
-    # Use np.in1d to find matching rows
-    mask = np.in1d(dep_struct, boundary_struct)
-    
-    # Get the indices of matching rows
-    indices = np.where(mask)[0]
+    mask = np.in1d(dep_struct, boundary_struct) # Use np.in1d to find matching rows
+    indices = np.where(mask)[0] # Get the indices of matching rows
 
     return indices
-
 
 
 # matches only lon, lat columns
 boundary_points_indx = find_matching_indices(dep_arr, boundary_points)
 print(boundary_points_indx.shape)
 
-dep_arr[boundary_points_indx]
-
 # add boundary points to the plot
 fig_slab, ax_slab = create_scatter_plot(sum_dep_arr, plt.cm.viridis_r.resampled(14), 0, 700)
 sc_1 = ax_slab.scatter(dep_arr[boundary_points_indx][:,0], dep_arr[boundary_points_indx][:,1], 
                        c='r', s=1, edgecolor=None, transform=ccrs.PlateCarree(),)
 
-
-
 # +
+# # project the boundary by constant depth
+
+# # layer thickness is negative if it is shifted down and positive if it is shifted upward direction
+# # top surface depth must be positive
+
+# all_boundary_points_list = []
+# for depth in depth_values_list:
+#     print('Projecting to depth: ', depth,'km')
+#     boundary_points_at_depth = np.zeros_like(dep_arr[boundary_points_indx])
+#     for i, index in enumerate(boundary_points_indx):
+#         shift_pt = ps.PointShift(dep_arr[index][0], dep_arr[index][1], -dep_arr[index][2], dip_arr[index][2], str_arr[index][2], -depth)
+#         boundary_points_at_depth[i][0] = shift_pt[0]
+#         boundary_points_at_depth[i][1] = shift_pt[1]
+#         boundary_points_at_depth[i][2] = shift_pt[2] # obtained positive depth. no need for conversion.
+#     all_boundary_points_list.append(boundary_points_at_depth)
+
+# # Convert to numpy array
+# all_boundary_points_arr = np.vstack(all_boundary_points_list)
+# +
+# project the boundary by constant depth
+
 # layer thickness is negative if it is shifted down and positive if it is shifted upward direction
 # top surface depth must be positive
 
 all_boundary_points_list = []
 for depth in depth_values_list:
-    print('Projecting to depth: ',depth)
-    boundary_points_at_depth = np.zeros_like(dep_arr[boundary_points_indx])
-    for i, indice in enumerate(boundary_points_indx):
-        shift_pt = ps.PointShift(dep_arr[indice][0], dep_arr[indice][1], -dep_arr[indice][2], dip_arr[indice][2], str_arr[indice][2], -thk_arr[indice][2])
-        boundary_points_at_depth[i][0] = shift_pt[0]
-        boundary_points_at_depth[i][1] = shift_pt[1]
-        boundary_points_at_depth[i][2] = -shift_pt[2]
-    all_boundary_points_list.append(boundary_points_at_depth)
+    print('Projecting to depth: ', depth,'km')
+    # boundary_points_at_depth = np.zeros_like(dep_arr[boundary_points_indx])
+    for i, index in enumerate(boundary_points_indx):
+        shift_pt = ps.PointShift(dep_arr[index][0], dep_arr[index][1], -dep_arr[index][2], dip_arr[index][2], str_arr[index][2], -depth)
+        if depth <= thk_arr[index][2]:
+            # boundary_points_at_depth[i][0] = shift_pt[0]
+            # boundary_points_at_depth[i][1] = shift_pt[1]
+            # boundary_points_at_depth[i][2] = shift_pt[2] # obtained positive depth. no need for conversion.
+            all_boundary_points_list.append(shift_pt)
+    # all_boundary_points_list.append(boundary_points_at_depth)
+
+# Convert to numpy array
+# all_boundary_points_arr = np.vstack(all_boundary_points_list)
+all_boundary_points_arr = np.array(all_boundary_points_list)
 # -
 
-all_boundary_points_list
+all_boundary_points_arr[:,2].min()
+
+# +
+# # layer thickness is negative if it is shifted down and positive if it is shifted upward direction
+# # top surface depth must be positive
+
+# all_boundary_points_list = []
+
+# for i, index in enumerate(boundary_points_indx):
+#     shift_pt = ps.PointShift(dep_arr[index][0], dep_arr[index][1], -dep_arr[index][2], dip_arr[index][2], str_arr[index][2], -thk_arr[index][2])
+#     print(-dep_arr[index][2], shift_pt[2])
+
+#     res = 5
+#     if -dep_arr[index][2] < shift_pt[2]:
+#         depth_arr = np.round(np.arange(-dep_arr[index][2]+res, shift_pt[2], res), 0)
+#     else:
+#         print('reverse case')
+#         depth_arr = np.round(np.arange(shift_pt[2]+res, -dep_arr[index][2], res), 0)
+        
+#     for depth in depth_arr:
+#         bd_shift_pt = ps.PointShift(dep_arr[index][0], dep_arr[index][1], -dep_arr[index][2], dip_arr[index][2], str_arr[index][2], -depth)
+    
+#         all_boundary_points_list.append(bd_shift_pt)
+
+# # Convert to numpy array
+# all_boundary_points_arr = np.array(all_boundary_points_list)
+
+# +
+# slab bottom surface array
+bot_surf_dep_arr_nan = np.zeros_like(dep_arr)
+
+# layer thickness is negative if it is shifted down and positive if it is shifted upward direction
+# top surface depth must be positive
+for i, values in enumerate(dep_arr):
+    shift_pt = ps.PointShift(values[0], values[1], -values[2], dip_arr[i][2], str_arr[i][2], -thk_arr[i][2])
+    bot_surf_dep_arr_nan[i][0] = shift_pt[0]
+    bot_surf_dep_arr_nan[i][1] = shift_pt[1]
+    bot_surf_dep_arr_nan[i][2] = shift_pt[2]
+
+# Convert the NumPy arrays back to xarray DataArrays
+bot_surf_dep_arr = remove_nan_rows(bot_surf_dep_arr_nan)
+
+# +
+# # slab bottom surface array
+# bot_surf_dep_arr_nan = np.zeros_like(dep_arr)
+# all_boundary_points_list = []
+
+# # layer thickness is negative if it is shifted down and positive if it is shifted upward direction
+# # top surface depth must be positive
+# for i, values in enumerate(dep_arr):
+#     shift_pt = ps.PointShift(values[0], values[1], -values[2], dip_arr[i][2], str_arr[i][2], -thk_arr[i][2])
+#     bot_surf_dep_arr_nan[i][0] = shift_pt[0]
+#     bot_surf_dep_arr_nan[i][1] = shift_pt[1]
+#     bot_surf_dep_arr_nan[i][2] = shift_pt[2]
+    
+#     for index in boundary_points_indx:
+#         if i==index:
+#             res = 3
+#             depth_arr = np.round(np.arange(-values[2] + res, shift_pt[2], res), 0)
+#             for depth in depth_arr:
+#                 bd_shift_pt = ps.PointShift(dep_arr[index][0], dep_arr[index][1], -dep_arr[index][2], dip_arr[index][2], str_arr[index][2], -depth)
+#                 # ps.PointShift(values[0], values[1], -values[2], dip_arr[i][2], str_arr[i][2], -depth)
+#                 all_boundary_points_list.append(bd_shift_pt)
+
+# # Convert to numpy array
+# bot_surf_dep_arr = remove_nan_rows(bot_surf_dep_arr_nan)
+# all_boundary_points_arr = np.array(all_boundary_points_list)
+# -
+
+bot_surf_dep_arr
+
+# ### Transforming the geo lld to cubed sphere xyz
+
+# +
+# Get the minimum and maximum values in lon and lat
+lon_min = np.min(slab2_data[:, 0])
+lon_max = np.max(slab2_data[:, 0])
+lat_min = np.min(slab2_data[:, 1])
+lat_max = np.max(slab2_data[:, 1])
+
+print(lon_min, lon_max, lat_min, lat_max)
+# -
+
+coord_trans = ct.CoordinateTransformCubedsphere(g_lon_min=lon_min, 
+                                                g_lon_max=lon_max,
+                                                g_lat_min=lat_min, 
+                                                g_lat_max=lat_max,)
+
+sum_top_surf_c_xyz = coord_trans.geo_lld_to_cubedsphere_xyz(sum_dep_arr)
+print(sum_top_surf_c_xyz)
+
+sum_bot_surf_c_xyz = coord_trans.geo_lld_to_cubedsphere_xyz(bot_surf_dep_arr)
+print(sum_bot_surf_c_xyz)
+
+all_boundary_points_c_xyz = coord_trans.geo_lld_to_cubedsphere_xyz(all_boundary_points_arr)
+print(all_boundary_points_c_xyz)
+
+# +
+# Convert the points to a PyVista point cloud
+sum_top_surf_cloud = pv.PolyData(sum_top_surf_c_xyz)
+sum_bot_surf_cloud = pv.PolyData(sum_bot_surf_c_xyz)
+
+# Create an empty PolyData object to store all boundary points
+boundary_points_cloud = pv.PolyData(all_boundary_points_c_xyz)
+
+# Create a PyVista plotter
+pl = pv.Plotter()
+
+# Add the point clouds to the plotter
+pl.add_points(sum_top_surf_cloud, color='red', point_size=2)
+pl.add_points(boundary_points_cloud, color='blue', point_size=2)
+pl.add_points(sum_bot_surf_cloud, color='green', point_size=2)
+
+# Set the background color
+pl.background_color = 'white'
+
+# Show the plotter
+pl.show()
+# -
+
+sum_slab_c_xyz = np.vstack((sum_top_surf_c_xyz, all_boundary_points_c_xyz, sum_bot_surf_c_xyz))
+
+sum_slab_c_xyz
+
+sum_slab_c_xyz.shape
+
+import open3d as o3d
+
+# +
+# Load or define your point cloud data
+pcd = o3d.geometry.PointCloud()
+pcd.points = o3d.utility.Vector3dVector(sum_slab_c_xyz)
+
+# Estimate normals (required for Poisson reconstruction)
+pcd.estimate_normals()
+
+# +
+# # Perform Poisson reconstruction
+# mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(pcd, depth=16)
+# o3d.visualization.draw_geometries([mesh])
+
+# Compute the alpha shape (alpha controls the level of detail)
+alpha = 0.03  # smaller alpha -> tighter shape, larger alpha -> looser shape
+mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_alpha_shape(pcd, alpha)
+
+# Assume 'mesh' already created
+o3d.io.write_triangle_mesh(f"{output_dir}mesh_output.ply", mesh)
+
+# convert ply to vtk
+mesh = pv.read(f"{output_dir}mesh_output.ply")
+mesh.save(f"{output_dir}mesh_output.vtk")
+
+# +
+# Create a PyVista point cloud
+point_cloud = pv.PolyData(sum_slab_c_xyz)
+
+# Create a volume mesh using 3D Delaunay triangulation with an alpha parameter
+# The 'alpha' parameter controls the level of detail of the alpha shape
+volume = point_cloud.delaunay_3d(alpha=9e-3, tol=1e-3, offset=2.5,)
+
+# Extract the surface of the volume mesh to get the alpha shape
+alpha_shape = volume.extract_geometry()
+
+# Option 1: Save the full volumetric mesh
+volume.save(f"{output_dir}sum_slab_vol_mesh.vtk")
+# -
+
+
+
+surf = point_cloud.reconstruct_surface(nbr_sz=10, sample_spacing=0.06)
+# save vtk
+surf.save(f"{output_dir}sum_slab_surf_mesh.vtk")
+
+
+
+
+
+
+
+# Create a PyVista point cloud
+point_cloud = pv.PolyData(sum_top_surf_c_xyz)
+top_surf = point_cloud.delaunay_2d(alpha=0.003)
+top_surf.save(f"{output_dir}sum_top_surf_mesh.vtk")
+
+# !open ./output/sum_top_surf_mesh.vtk
+
+# Create a PyVista point cloud
+point_cloud = pv.PolyData(sum_bot_surf_c_xyz)
+bot_surf = point_cloud.delaunay_2d(alpha=0.003)
+bot_surf.save(f"{output_dir}sum_bot_surf_mesh.vtk")
+
+# !open ./output/sum_bot_surf_mesh.vtk
+
+# Create a PyVista point cloud
+point_cloud = pv.PolyData(all_boundary_points_c_xyz)
+surf = point_cloud.delaunay_2d(tol=1e-5, alpha=0.01)
+# save vtk
+surf.save(f"{output_dir}all_boundary_points_surf_mesh.vtk")
+
+# !open ./output/all_boundary_points_surf_mesh.vtk
 
 

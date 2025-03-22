@@ -202,6 +202,7 @@ def xarray_to_numpy(xda):
 # converting xarray to numpy array
 dep_arr, thk_arr, dip_arr, str_arr = [xarray_to_numpy(grid) for grid in grids]
 
+# +
 # slab bottom surface array
 bot_surf_dep_arr_nan = np.zeros_like(dep_arr)
 
@@ -213,6 +214,8 @@ for i, values in enumerate(dep_arr):
     bot_surf_dep_arr_nan[i][1] = shift_pt[1]
     bot_surf_dep_arr_nan[i][2] = -shift_pt[2]
 
+
+# -
 
 def numpy_to_xarray(arr):
     """
@@ -245,7 +248,7 @@ if not os.path.isfile('sum_bot_surf_dep.pdf'):
                                    left=0.125, right=0.9, bottom=0.11, top=0.98, wspace=0.2, hspace=0.2)
 # -
 
-# ### Transforming the geo llr to cubed sphere xyz
+# ### Transforming the geo lld to cubed sphere xyz
 
 # +
 # Get the minimum and maximum values in lon and lat
