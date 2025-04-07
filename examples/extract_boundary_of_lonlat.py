@@ -18,6 +18,8 @@ import subprocess
 import meshio
 from collections import defaultdict
 from scipy.spatial import cKDTree
+import tetgen
+import gmsh
 
 import plotly.graph_objects as go
 import webbrowser
@@ -242,10 +244,6 @@ def xarray_to_numpy(xda):
 # converting xarray to numpy array
 dep_arr, thk_arr, dip_arr, str_arr = [xarray_to_numpy(grid) for grid in grids]
 
-# depth list
-depth_values_list = np.linspace(5, 200, 40)
-print(depth_values_list)
-
 
 def find_matching_indices(dep_arr, boundary_points):
     """
@@ -280,6 +278,10 @@ sc_1 = ax_slab.scatter(dep_arr[boundary_points_indx][:,0], dep_arr[boundary_poin
 
 # +
 # project the boundary points by constant depth
+
+# depth list
+depth_values_list = np.linspace(5, 200, 40)
+print(depth_values_list)
 
 all_boundary_points_list = []
 for depth in depth_values_list:
@@ -360,12 +362,7 @@ pl.background_color = 'white'
 # Show the plotter
 pl.show()
 
-# +
-# Create a surface from point cloud
-sum_top_surf_mesh = sum_top_surf_cloud.delaunay_2d(alpha=0.0035) # manual picking
-sum_top_surf_mesh.save(f"{output_dir}sum_top_surf_mesh.vtk")
 
-# !open ./output/sum_top_surf_mesh.vtk
 # -
 
 def check_irregular_boundary_points(surface_mesh, visualize=True):
@@ -418,9 +415,6 @@ def check_irregular_boundary_points(surface_mesh, visualize=True):
         print("No boundary points with more than two edge connections found.")
 
     return # irregular_points
-
-
-check_irregular_boundary_points(sum_top_surf_mesh)
 
 
 def convert_mesh_to_vtk(input_mesh_file, output_vtk_file):
@@ -491,43 +485,60 @@ def save_pyvista_to_mesh(pv_mesh, filename):
 
 
 # +
-# save .mesh from pyvista mesh
-save_pyvista_to_mesh(sum_top_surf_mesh, f'{output_dir}sum_top_surf_mesh.mesh')
+# creating slab top surface mesh
 
-# running mmg surface
-run_mmgs_remesh(f'{output_dir}sum_top_surf_mesh.mesh', f'{output_dir}sum_top_surf_mesh_mmg.mesh', 
-                hmax=0.0015, hmin=0.0014, hausd=None)
+# create alphashape from point cloud
+sum_top_surf_mesh = sum_top_surf_cloud.delaunay_2d(alpha=0.0035) # manual picking
 
-# convert .mesh out to vtk
-convert_mesh_to_vtk(f'{output_dir}sum_top_surf_mesh_mmg.mesh', f'{output_dir}sum_top_surf_mesh_mmg.vtk')
+if not os.path.isfile(f"{output_dir}sum_top_surf_mesh.vtk"):
+    sum_top_surf_mesh.save(f"{output_dir}sum_top_surf_mesh.vtk")
+else:
+    print('Slab top surface mesh file exists!')
+
+# !open ./output/sum_top_surf_mesh.vtk
+
+# Ensure the surface mesh has no boundary holes before passing it to MMG.
+check_irregular_boundary_points(sum_top_surf_mesh)
+
+# run mmg
+if not os.path.isfile(f'{output_dir}sum_top_surf_mesh_mmg.vtk'):
+    save_pyvista_to_mesh(sum_top_surf_mesh, f'{output_dir}sum_top_surf_mesh.mesh')
+    run_mmgs_remesh(f'{output_dir}sum_top_surf_mesh.mesh', f'{output_dir}sum_top_surf_mesh_mmg.mesh', 
+                    hmax=0.0015, hmin=0.0014, hausd=None)
+    convert_mesh_to_vtk(f'{output_dir}sum_top_surf_mesh_mmg.mesh', f'{output_dir}sum_top_surf_mesh_mmg.vtk')
+else:
+    print('Slab top surface mmg mesh file exists!')
 
 # view vtk in paraview
 # !open ./output/sum_top_surf_mesh_mmg.vtk
 
 # +
-# Create a PyVista point cloud
+# creating slab bottom surface mesh
+
+# create alphashape from point cloud
 sum_bot_surf_mesh = sum_bot_surf_cloud.delaunay_2d(alpha=0.0029)
-sum_bot_surf_mesh.save(f"{output_dir}sum_bot_surf_mesh.vtk")
+
+if not os.path.isfile(f"{output_dir}sum_bot_surf_mesh.vtk"):
+    sum_bot_surf_mesh.save(f"{output_dir}sum_bot_surf_mesh.vtk")
+else:
+    print('Slab bottom surface mesh file exists!')
 
 # !open ./output/sum_bot_surf_mesh.vtk
-# -
 
+# checking for holes in the surface
 check_irregular_boundary_points(sum_bot_surf_mesh)
 
-# +
-# save .mesh from pyvista mesh
-save_pyvista_to_mesh(sum_bot_surf_mesh, f'{output_dir}sum_bot_surf_mesh.mesh')
-
-# running mmg surface
-run_mmgs_remesh(f'{output_dir}sum_bot_surf_mesh.mesh', f'{output_dir}sum_bot_surf_mesh_mmg.mesh', 
-                hmax=0.0015, hmin=0.0014, hausd=None)
-
-# convert .mesh out to vtk
-convert_mesh_to_vtk(f'{output_dir}sum_bot_surf_mesh_mmg.mesh', f'{output_dir}sum_bot_surf_mesh_mmg.vtk')
+# run mmg
+if not os.path.isfile(f'{output_dir}sum_bot_surf_mesh_mmg.vtk'):
+    save_pyvista_to_mesh(sum_bot_surf_mesh, f'{output_dir}sum_bot_surf_mesh.mesh')
+    run_mmgs_remesh(f'{output_dir}sum_bot_surf_mesh.mesh', f'{output_dir}sum_bot_surf_mesh_mmg.mesh', 
+                    hmax=0.0015, hmin=0.0014, hausd=None)
+    convert_mesh_to_vtk(f'{output_dir}sum_bot_surf_mesh_mmg.mesh', f'{output_dir}sum_bot_surf_mesh_mmg.vtk')
+else:
+    print('Slab bottom surface mmg mesh file exists!')
 
 # view vtk in paraview
 # !open ./output/sum_bot_surf_mesh_mmg.vtk
-
 # +
 # # Create a PyVista point cloud
 # point_cloud = pv.PolyData(all_boundary_points_c_xyz)
@@ -536,10 +547,8 @@ convert_mesh_to_vtk(f'{output_dir}sum_bot_surf_mesh_mmg.mesh', f'{output_dir}sum
 
 # # !open ./output/all_boundary_points_surf_mesh.vtk
 
-# +
 # check_irregular_boundary_points(all_boundary_points_surf_mesh)
 
-# +
 # # save .mesh from pyvista mesh
 # save_pyvista_to_mesh(all_boundary_points_surf_mesh, f'{output_dir}all_boundary_points_surf_mesh.mesh')
 
@@ -554,15 +563,22 @@ convert_mesh_to_vtk(f'{output_dir}sum_bot_surf_mesh_mmg.mesh', f'{output_dir}sum
 
 # # view vtk in paraview
 # # !open ./output/all_boundary_points_surf_mesh_mmg.vtk
-# -
 
+# +
+# Compute normals for the mesh points
+sum_top_surf_normals = sum_top_surf_mesh_mmg.extract_surface().compute_normals(point_normals=True, cell_normals=False)
+sum_bot_surf_normals = sum_bot_surf_mesh_mmg.extract_surface().compute_normals(point_normals=True, cell_normals=False)
 
+# Visualize mesh with normals
+sum_top_surf_normals.plot_normals(mag=0.01, color='red')
 
-# Load meshes (assuming they are initially PolyData)
+# +
+# create volume from slab top surface
+
+# Load mmg mesh
 sum_top_surf_mesh_mmg = pv.read(f'{output_dir}sum_top_surf_mesh_mmg.vtk')
 sum_bot_surf_mesh_mmg = pv.read(f'{output_dir}sum_bot_surf_mesh_mmg.vtk')
 
-# +
 # Step 1: Load the open surface mesh
 surf = sum_top_surf_mesh_mmg.extract_surface()
 
@@ -617,176 +633,221 @@ closed_shell = surf_with_normals + offset_surf + side_mesh
 
 # Visualize
 closed_shell.plot(show_edges=True, color='white', opacity=0.6)
+# side_mesh.plot()
 
-# -
+if closed_shell.is_manifold:
+    print('Created volume is good for further operations')
+else:
+    print('Created volume is not closed')
+    
+closed_shell_2 = closed_shell.triangulate()
+if not os.path.isfile(f"{output_dir}sum_vol_from_top_surf.vtk"):
+    print(closed_shell_2.is_all_triangles)
+    
+    closed_shell_2.save(f"{output_dir}sum_vol_from_top_surf.vtk")
+    save_pyvista_to_mesh(closed_shell_2, f"{output_dir}sum_vol_from_top_surf.mesh")
+else:
+    print('volume already exists')
 
-side_mesh.plot()
-
-# +
-print(closed_shell.is_manifold)
-closed_shell.save(f"{output_dir}closed_shell.vtk")
-
-# !open ./output/closed_shell.vtk
-# -
-
-
-
-# +
-# Extract boundary edges
-sum_top_bd_edges = sum_top_surf_mesh_mmg.extract_feature_edges(boundary_edges=True, feature_edges=False,
-                                                               manifold_edges=False, non_manifold_edges=False)
-
-sum_bot_bd_edges = sum_bot_surf_mesh_mmg.extract_feature_edges(boundary_edges=True, feature_edges=False,
-                                                               manifold_edges=False, non_manifold_edges=False)
-# -
-
-# Visualize boundary edges
-plotter = pv.Plotter()
-plotter.add_mesh(sum_top_surf_mesh_mmg, color='white', opacity=0.5)
-plotter.add_mesh(sum_top_bd_edges, color='red', line_width=3)
-plotter.add_mesh(sum_bot_surf_mesh_mmg, color='white', opacity=0.5)
-plotter.add_mesh(sum_bot_bd_edges, color='green', line_width=3)
-plotter.show()
-
-# Compute normals for the mesh points
-sum_top_surf_normals = sum_top_surf_mesh_mmg.extract_surface().compute_normals(point_normals=True, cell_normals=False)
-sum_bot_surf_normals = sum_bot_surf_mesh_mmg.extract_surface().compute_normals(point_normals=True, cell_normals=False)
-
-
-def project_boundary_points(boundary_edges, mesh_with_normals, projection_distance_list, direction='up'):
-    """
-    Project boundary points along their normals by a list of distances.
-
-    Parameters:
-        boundary_edges (pyvista.PolyData): Extracted boundary edges.
-        mesh_with_normals (pyvista.PolyData): Original mesh with computed normals.
-        projection_distance_list: List of distance arrays to project points.
-        direction: up or down
-
-    Returns:
-        list of numpy.ndarray: List of projected boundary point sets.
-    """
-    boundary_points = boundary_edges.points
-    mesh_kd_tree = cKDTree(mesh_with_normals.points)
-    distances, indices = mesh_kd_tree.query(boundary_points)
-    if direction=='up':
-        boundary_normals = mesh_with_normals['Normals'][indices]
-    elif direction=='down':
-        boundary_normals = -mesh_with_normals['Normals'][indices]
-
-    projected_points_list = []
-    for projection_distance in projection_distance_list:
-        projected_points = boundary_points + boundary_normals * projection_distance
-        projected_points_list.append(projected_points)
-
-    return np.vstack(projected_points_list)
-
-
-# +
-# projection sum top boundary points
-sum_top_proj_bd_pts = project_boundary_points(sum_top_bd_edges, sum_top_surf_normals, [0.001, 0.002, 0.003, 0.004], direction='down')
-sum_bot_proj_bd_pts = project_boundary_points(sum_bot_bd_edges, sum_bot_surf_normals, [0.001, 0.002, 0.003, 0.004], direction='up')
-
-# Visualize original and projected boundary points
-plotter = pv.Plotter()
-plotter.add_mesh(sum_top_surf_mesh_mmg, color='white', opacity=0.5)
-plotter.add_mesh(sum_bot_surf_mesh_mmg, color='white', opacity=0.5)
-
-plotter.add_points(sum_top_bd_edges, color='blue', point_size=8, label='Original Boundary Points')
-plotter.add_points(sum_top_proj_bd_pts, color='red', point_size=8, label='Projected Boundary Points')
-
-plotter.add_points(sum_bot_bd_edges, color='green', point_size=8, label='Original Boundary Points')
-plotter.add_points(sum_bot_proj_bd_pts, color='pink', point_size=8, label='Projected Boundary Points')
-
-plotter.show()
-
-# +
-# Create a PyVista point cloud
-point_cloud = pv.PolyData(np.vstack((sum_top_proj_bd_pts, sum_bot_proj_bd_pts)))
-all_boundary_points_surf_mesh = point_cloud.delaunay_2d(tol=1e-5, alpha=0.01)
-all_boundary_points_surf_mesh.save(f"{output_dir}all_boundary_points_surf_mesh.vtk")
-
-# !open ./output/all_boundary_points_surf_mesh.vtk
+# !open ./output/sum_vol_from_top_surf.vtk
 # -
 
 
 
+# create volume mesh with TetGen
+tet = tetgen.TetGen(closed_shell_2)
+volume = tet.tetrahedralize()
+
+# save as vtk
+slab_grid = tet.grid
+slab_grid.save(f"{output_dir}sum_vol_from_top_surf_tet.vtk")
+
 # +
-# Assume 'sum_top_surf_mesh_mmg' is your original UnstructuredGrid
-surface_mesh = sum_top_surf_mesh_mmg.extract_surface()
+# # plot half the slab
+# mask = np.logical_or(slab_grid.points[:, 0] < 0, slab_grid.points[:, 0] > 0.1)
+# half_slab = slab_grid.extract_points(mask)
 
-# Now compute normals for the surface
-surface_with_normals = surface_mesh.compute_normals(point_normals=True, cell_normals=False)
+# plotter = pv.Plotter()
+# plotter.add_mesh(half_slab, color="w", show_edges=True)
+# plotter.add_mesh(slab_grid, color="r", style="wireframe", opacity=0.05)
+# plotter.show()
 
-# Access the computed normals
-normals = surface_with_normals['Normals']
-print("Computed normals:", normals)
+# +
+# plotter = pv.Plotter(off_screen=True, window_size=[2000, 800])
+# plotter.open_gif("slab.gif")
+# plotter.add_mesh(slab_grid, color="r", style="wireframe", opacity=0.0)
+# plotter.write_frame()
 
-# Visualize mesh with normals
-surface_with_normals.plot_normals(mag=0.01, color='red')
+# # Zoom in slightly (1.5x zoom)
+# plotter.camera.zoom(2.6)
+
+# nframe = 200
+# xb = np.array(slab_grid.bounds[0:2])
+# step = xb.ptp() / nframe
+# for val in np.arange(xb[0] + step, xb[1] + step, step):
+#     mask = np.argwhere(slab_grid.cell_centers().points[:, 0] < val)
+#     half_slab = slab_grid.extract_cells(mask)
+#     plotter.add_mesh(half_slab, color="w", show_edges=True, name="building")
+#     plotter.update()
+#     plotter.write_frame()
+
+# plotter.close()
+
+# +
+# plotter = pv.Plotter(off_screen=True, window_size=[2000, 1000])
+# plotter.open_gif("slab_zoomed.gif")
+
+# # Initial wireframe outline
+# plotter.add_mesh(slab_grid, color="r", style="wireframe", opacity=0.0)
+# plotter.write_frame()
+
+# # Zoom in slightly (1.5x zoom)
+# plotter.camera.zoom(2.15)
+
+# nframe = 2
+# xb = np.array(slab_grid.bounds[0:2])
+# step = xb.ptp() / nframe
+
+# # Use a tighter x-range to simulate zoom-in cropping
+# xmin_zoom = xb[0] + 0.5 * xb.ptp()
+# xmax_zoom = xb[1] - 0.5 * xb.ptp()
+
+# for val in np.arange(xmin_zoom, xmax_zoom + step, step):
+#     mask = np.argwhere(slab_grid.cell_centers().points[:, 0] < val)
+#     half_slab = slab_grid.extract_cells(mask)
+#     plotter.add_mesh(half_slab, color="w", show_edges=True, name="building")
+#     plotter.update()
+#     plotter.write_frame()
+
+# plotter.close()
+
+# +
+# VTK_TETRA = 10 → 'tetra' in meshio
+cells = [("tetra", slab_grid.cells_dict[10])]
+
+# Create meshio Mesh object
+mesh = meshio.Mesh(points=slab_grid.points, cells=cells)
+
+# Save in Gmsh 4.1 format
+meshio.write(f"{output_dir}sum_vol_from_top_surf_tet.msh", mesh, file_format="gmsh")
+
+# +
+cap = pv.read(f"{output_dir}uw_sos_ro1.0_ri0.87_lon52.0_lat47.0_csize0.016.msh")
+slab = pv.read(f"{output_dir}sum_vol_from_top_surf_tet.msh")
+
+# Extract surfaces
+cap_surf = cap.extract_surface()
+slab_surf = slab.extract_surface()
+
+combined = cap + slab  # union (non-conforming)
+combined.plot()
 # -
 
-sum_top_surf_mesh.compute_normals
+# Save surfaces as STL (for Gmsh input)
+cap_surf.save(f'{output_dir}cap_surface.stl')
+slab_surf.save(f'{output_dir}slab_surface.stl')
 
-boundary_edges.points.shape
+cap.save(f"{output_dir}uw_sos_ro1.0_ri0.87_lon52.0_lat47.0_csize0.016.vtk")
 
-
-
-
-
-import open3d as o3d
+save_pyvista_to_mesh(cap, f"{output_dir}uw_sos_ro1.0_ri0.87_lon52.0_lat47.0_csize0.016.mesh")
 
 # +
-# Load or define your point cloud data
-pcd = o3d.geometry.PointCloud()
-pcd.points = o3d.utility.Vector3dVector(sum_slab_c_xyz)
+# def convert_stl_to_step_gmsh(stl_path, step_path):
+#     # Ensure paths are absolute and normalized
+#     stl_path = os.path.abspath(stl_path)
+#     step_path = os.path.abspath(step_path)
+    
+#     geo_script = f"""SetFactory("OpenCASCADE");
+#     Merge "{stl_path}";
+#     Save "{step_path}";
+#     """
+    
+#     geo_file = stl_path.replace(".stl", "_export.geo")
+#     with open(geo_file, "w") as f:
+#         f.write(geo_script)
 
-# Estimate normals (required for Poisson reconstruction)
-pcd.estimate_normals()
+#     print(f"Running Gmsh to convert {stl_path} → {step_path}")
+#     subprocess.run(["gmsh", "-0", geo_file], check=True)
+#     print(f"STEP file saved: {step_path}")
 
-# +
-# # Perform Poisson reconstruction
-# mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(pcd, depth=16)
-# o3d.visualization.draw_geometries([mesh])
-
-# Compute the alpha shape (alpha controls the level of detail)
-alpha = 0.03  # smaller alpha -> tighter shape, larger alpha -> looser shape
-mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_alpha_shape(pcd, alpha)
-
-# Assume 'mesh' already created
-o3d.io.write_triangle_mesh(f"{output_dir}mesh_output.ply", mesh)
-
-# convert ply to vtk
-mesh = pv.read(f"{output_dir}mesh_output.ply")
-mesh.save(f"{output_dir}mesh_output.vtk")
-
-# +
-# Create a PyVista point cloud
-point_cloud = pv.PolyData(sum_slab_c_xyz)
-
-# Create a volume mesh using 3D Delaunay triangulation with an alpha parameter
-# The 'alpha' parameter controls the level of detail of the alpha shape
-volume = point_cloud.delaunay_3d(alpha=9e-3, tol=1e-3, offset=2.5,)
-
-# Extract the surface of the volume mesh to get the alpha shape
-alpha_shape = volume.extract_geometry()
-
-# Option 1: Save the full volumetric mesh
-volume.save(f"{output_dir}sum_slab_vol_mesh.vtk")
+# # Example usage
+# convert_stl_to_step_gmsh(f"{output_dir}cap_surface.stl", f"{output_dir}cap_surface.step")
+# convert_stl_to_step_gmsh(f"{output_dir}slab_surface.stl", f"{output_dir}slab_surface.step")
 # -
 
+# Read the Medit mesh file
+cap_mesh = meshio.read(f"{output_dir}uw_sos_ro1.0_ri0.87_lon52.0_lat47.0_csize0.016.mesh")
+
+from scipy.spatial import cKDTree
+
+slab_kdtree = cKDTree(slab.points)
+dists, _ = slab_kdtree.query(cap_mesh.points)
+
+# Extract top surface from the slab volume
+slab_surface = slab.extract_surface().clean()  # makes it a watertight surface mesh
+
+# Wrap the Medit points as a PyVista cloud (not needed for compute_implicit_distance)
+cloud = pv.PolyData(cap_mesh.points)
+
+# Compute signed distance at cap nodes to slab surface
+cap_with_dist = cloud.compute_implicit_distance(slab_surface)
+
+# +
+# Rename the field for clarity
+cap_with_dist["level_set"] = cap_with_dist["implicit_distance"]
+
+# Save result
+cap_with_dist.save(f"{output_dir}spherical_cap_with_level_set.vtk")
 
 
-surf = point_cloud.reconstruct_surface(nbr_sz=10, sample_spacing=0.06)
-# save vtk
-surf.save(f"{output_dir}sum_slab_surf_mesh.vtk")
+# -
+
+def write_gmsh_sol(filename, mesh, field_name="level_set"):
+    values = mesh.point_data[field_name]
+    num_vertices = mesh.n_points
+
+    with open(filename, 'w') as f:
+        f.write("MeshVersionFormatted 2\n\n")
+        f.write("Dimension 3\n\n")
+        f.write("SolAtVertices\n")
+        f.write(f"{num_vertices}\n")
+        f.write("1 1\n\n")
+        for val in values:
+            f.write(f"{val:.15f} \n")
+        f.write("\nEnd\n")
+
+
+write_gmsh_sol(
+    filename=f"{output_dir}spherical_cap_with_level_set.sol",
+    mesh=cap_with_dist,
+    field_name="level_set"
+)
 
 
 
+merged_msh = pv.read(f'{output_dir}uw_sos_ro1.0_ri0.87_lon52.0_lat47.0_csize0.o.msh')
 
+merged_msh
 
+# Check available cell arrays
+print(merged_msh.cell_data)
 
+# Plot by geometrical entity ID
+merged_msh.plot(scalars="gmsh:geometrical", show_edges=True, cmap="tab20", show_scalar_bar=True)
 
+geom_id = 10
+subset = merged_msh.extract_cells(merged_msh.cell_data["gmsh:geometrical"] == geom_id)
+subset.plot(show_edges=True)
 
+3, 
+
+# +
+geom_ids = [3, 10]  # the IDs you want
+
+mask = np.isin(merged_msh.cell_data["gmsh:geometrical"], geom_ids)
+subset = merged_msh.extract_cells(mask)
+
+subset.plot(show_edges=True, cmap="tab20", scalars="gmsh:geometrical")
+# -
 
 

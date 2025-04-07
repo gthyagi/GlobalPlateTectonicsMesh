@@ -29,7 +29,7 @@ os.makedirs(output_dir, exist_ok=True)
 # +
 # mesh details
 r_o = 1.0
-r_i = (6371. - 700.)/6371.
+r_i = (6371. - 800.)/6371.
 lon_ext = 52.0
 lat_ext = 47.0
 cellsize = 1/64
