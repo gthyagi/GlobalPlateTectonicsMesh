@@ -495,22 +495,28 @@ if not os.path.isfile(f"{output_dir}sum_top_surf_mesh.vtk"):
 else:
     print('Slab top surface mesh file exists!')
 
-# !open ./output/sum_top_surf_mesh.vtk
+os.system('open ./output/sum_top_surf_mesh.vtk')
 
 # Ensure the surface mesh has no boundary holes before passing it to MMG.
 check_irregular_boundary_points(sum_top_surf_mesh)
+
+# mmg parameters
+hmax = 0.02 # 0.0015
+hmin = 0.019 # 0.0014
+
+os.remove('./output/sum_top_surf_mesh_mmg.vtk')
 
 # run mmg
 if not os.path.isfile(f'{output_dir}sum_top_surf_mesh_mmg.vtk'):
     save_pyvista_to_mesh(sum_top_surf_mesh, f'{output_dir}sum_top_surf_mesh.mesh')
     run_mmgs_remesh(f'{output_dir}sum_top_surf_mesh.mesh', f'{output_dir}sum_top_surf_mesh_mmg.mesh', 
-                    hmax=0.0015, hmin=0.0014, hausd=None)
+                    hmax=hmax, hmin=hmin, hausd=None)
     convert_mesh_to_vtk(f'{output_dir}sum_top_surf_mesh_mmg.mesh', f'{output_dir}sum_top_surf_mesh_mmg.vtk')
 else:
     print('Slab top surface mmg mesh file exists!')
 
 # view vtk in paraview
-# !open ./output/sum_top_surf_mesh_mmg.vtk
+os.system('open ./output/sum_top_surf_mesh_mmg.vtk')
 
 # +
 # creating slab bottom surface mesh
@@ -523,22 +529,28 @@ if not os.path.isfile(f"{output_dir}sum_bot_surf_mesh.vtk"):
 else:
     print('Slab bottom surface mesh file exists!')
 
-# !open ./output/sum_bot_surf_mesh.vtk
+os.system('open ./output/sum_bot_surf_mesh.vtk')
 
 # checking for holes in the surface
 check_irregular_boundary_points(sum_bot_surf_mesh)
+
+# mmg parameters
+hmax = 0.02 # 0.0015
+hmin = 0.019 # 0.0014
+
+os.remove('./output/sum_bot_surf_mesh_mmg.vtk')
 
 # run mmg
 if not os.path.isfile(f'{output_dir}sum_bot_surf_mesh_mmg.vtk'):
     save_pyvista_to_mesh(sum_bot_surf_mesh, f'{output_dir}sum_bot_surf_mesh.mesh')
     run_mmgs_remesh(f'{output_dir}sum_bot_surf_mesh.mesh', f'{output_dir}sum_bot_surf_mesh_mmg.mesh', 
-                    hmax=0.0015, hmin=0.0014, hausd=None)
+                    hmax=hmax, hmin=hmin, hausd=None)
     convert_mesh_to_vtk(f'{output_dir}sum_bot_surf_mesh_mmg.mesh', f'{output_dir}sum_bot_surf_mesh_mmg.vtk')
 else:
     print('Slab bottom surface mmg mesh file exists!')
 
 # view vtk in paraview
-# !open ./output/sum_bot_surf_mesh_mmg.vtk
+os.system('open ./output/sum_bot_surf_mesh_mmg.vtk')
 # +
 # # Create a PyVista point cloud
 # point_cloud = pv.PolyData(all_boundary_points_c_xyz)
@@ -563,6 +575,11 @@ else:
 
 # # view vtk in paraview
 # # !open ./output/all_boundary_points_surf_mesh_mmg.vtk
+# -
+
+# Load mmg mesh
+sum_top_surf_mesh_mmg = pv.read(f'{output_dir}sum_top_surf_mesh_mmg.vtk')
+sum_bot_surf_mesh_mmg = pv.read(f'{output_dir}sum_bot_surf_mesh_mmg.vtk')
 
 # +
 # Compute normals for the mesh points
@@ -574,10 +591,6 @@ sum_top_surf_normals.plot_normals(mag=0.01, color='red')
 
 # +
 # create volume from slab top surface
-
-# Load mmg mesh
-sum_top_surf_mesh_mmg = pv.read(f'{output_dir}sum_top_surf_mesh_mmg.vtk')
-sum_bot_surf_mesh_mmg = pv.read(f'{output_dir}sum_bot_surf_mesh_mmg.vtk')
 
 # Step 1: Load the open surface mesh
 surf = sum_top_surf_mesh_mmg.extract_surface()
@@ -641,6 +654,9 @@ else:
     print('Created volume is not closed')
     
 closed_shell_2 = closed_shell.triangulate()
+
+os.remove(f"{output_dir}sum_vol_from_top_surf.vtk")
+
 if not os.path.isfile(f"{output_dir}sum_vol_from_top_surf.vtk"):
     print(closed_shell_2.is_all_triangles)
     
@@ -649,11 +665,8 @@ if not os.path.isfile(f"{output_dir}sum_vol_from_top_surf.vtk"):
 else:
     print('volume already exists')
 
-# !open ./output/sum_vol_from_top_surf.vtk
+os.system(f'open ./output/sum_vol_from_top_surf.vtk')
 # -
-
-
-
 # create volume mesh with TetGen
 tet = tetgen.TetGen(closed_shell_2)
 volume = tet.tetrahedralize()
@@ -661,6 +674,7 @@ volume = tet.tetrahedralize()
 # save as vtk
 slab_grid = tet.grid
 slab_grid.save(f"{output_dir}sum_vol_from_top_surf_tet.vtk")
+os.system(f'open {output_dir}sum_vol_from_top_surf_tet.vtk')
 
 # +
 # # plot half the slab
@@ -732,24 +746,72 @@ mesh = meshio.Mesh(points=slab_grid.points, cells=cells)
 meshio.write(f"{output_dir}sum_vol_from_top_surf_tet.msh", mesh, file_format="gmsh")
 
 # +
-cap = pv.read(f"{output_dir}uw_sos_ro1.0_ri0.87_lon52.0_lat47.0_csize0.016.msh")
-slab = pv.read(f"{output_dir}sum_vol_from_top_surf_tet.msh")
+# slab = pv.read(f"{output_dir}sum_vol_from_top_surf_tet.msh")
+# -
 
+# loading spherical mesh from gmsh
+sph_msh = pv.read(f"{output_dir}uw_sos_ro1.0_ri0.87_lon52.0_lat47.0_csize0.016.msh")
+sph_msh.save(f"{output_dir}uw_sos_ro1.0_ri0.87_lon52.0_lat47.0_csize0.016.vtk")
+
+sph_msh
+
+print(sph_msh['gmsh:dim_tags'])
+print(np.unique(sph_msh['gmsh:dim_tags'][:,0]))
+print(np.unique(sph_msh['gmsh:dim_tags'][:,1]))
+print(np.unique(sph_msh['gmsh:physical']))
+print(np.unique(sph_msh['gmsh:geometrical']))
+
+# +
+geom_ids = [11]  # the IDs you want
+
+mask = np.isin(sph_msh.cell_data['gmsh:physical'], geom_ids)
+subset = sph_msh.extract_cells(mask)
+
+subset.plot(show_edges=True, cmap="tab20", scalars='gmsh:physical', cpos='xy')
+# -
+
+print(type(sph_msh.cells))
+
+# +
+# Extract only 'tetra' elements
+volume_blocks = [i for i, block in enumerate(sph_msh.cells) if block.type == "tetra"]
+tetra_cells = [sph_msh.cells[i] for i in volume_blocks]
+tetra_tags = [sph_msh.cell_data['gmsh:physical'][i] for i in volume_blocks]
+
+# Now filter for tag 11 in tetrahedra
+filtered_cells = []
+filtered_tags = []
+
+for block, tags in zip(tetra_cells, tetra_tags):
+    mask = np.isin(tags, [11])
+    if np.any(mask):
+        filtered_cells.append(block.data[mask])
+        filtered_tags.append(tags[mask])
+
+# Rebuild the subset mesh if any matches found
+if filtered_cells:
+    import pyvista as pv
+    subset = pv.UnstructuredGrid({("tetra", fc) for fc in filtered_cells}, sph_msh.points)
+    subset["gmsh:physical"] = np.concatenate(filtered_tags)
+    subset.plot(show_edges=True, scalars="gmsh:physical", cmap="tab20", cpos="xy")
+else:
+    print("No tetrahedra found with physical tag 11.")
+
+
+# +
 # Extract surfaces
 cap_surf = cap.extract_surface()
 slab_surf = slab.extract_surface()
 
 combined = cap + slab  # union (non-conforming)
 combined.plot()
-# -
 
 # Save surfaces as STL (for Gmsh input)
 cap_surf.save(f'{output_dir}cap_surface.stl')
 slab_surf.save(f'{output_dir}slab_surface.stl')
+# -
 
-cap.save(f"{output_dir}uw_sos_ro1.0_ri0.87_lon52.0_lat47.0_csize0.016.vtk")
 
-save_pyvista_to_mesh(cap, f"{output_dir}uw_sos_ro1.0_ri0.87_lon52.0_lat47.0_csize0.016.mesh")
 
 # +
 # def convert_stl_to_step_gmsh(stl_path, step_path):
@@ -823,23 +885,46 @@ write_gmsh_sol(
     field_name="level_set"
 )
 
+# +
+input_mesh = f'{output_dir}uw_sos_ro1.0_ri0.87_lon52.0_lat47.0_csize0.016.mesh'
+sol_file = f'{output_dir}spherical_cap_with_level_set.sol'
+output_mesh = f'{output_dir}uw_sos_ro1.0_ri0.87_lon52.0_lat47.0_csize0.016_mmg.mesh'
+
+os.system(f'mmg3d_O3 {input_mesh} -sol {sol_file} -ls -nr -hausd 0.001 -hgrad 1.7 -hmax 0.05 -out {output_mesh}')
+
+# +
+# os.system(f'mmg3d_O3 {output_mesh} -noinsert -noswap -nomove -nsd 3 ') #-out {output_mesh}')
+
+# +
+# convert mmg output mesh to msh
+output_msh = f'{output_dir}uw_sos_ro1.0_ri0.87_lon52.0_lat47.0_csize0.016_mmg.msh'
+os.system(f'gmsh {output_mesh} -o {output_msh} -nopopup -save')
+
+output_vtk = output_msh.replace(".msh", ".vtk")
+os.system(f'gmsh {output_msh} -o {output_vtk} -format vtk -nopopup -save')
+# -
 
 
-merged_msh = pv.read(f'{output_dir}uw_sos_ro1.0_ri0.87_lon52.0_lat47.0_csize0.o.msh')
+
+
+
+merged_msh = pv.read(f'{output_dir}uw_sos_ro1.0_ri0.87_lon52.0_lat47.0_csize0.016_mmg.msh')
 
 merged_msh
 
 # Check available cell arrays
 print(merged_msh.cell_data)
 
-# Plot by geometrical entity ID
-merged_msh.plot(scalars="gmsh:geometrical", show_edges=True, cmap="tab20", show_scalar_bar=True)
+np.unique(merged_msh['gmsh:geometrical'])
 
-geom_id = 10
-subset = merged_msh.extract_cells(merged_msh.cell_data["gmsh:geometrical"] == geom_id)
-subset.plot(show_edges=True)
+# +
+# # Plot by geometrical entity ID
+# merged_msh.plot(scalars="gmsh:geometrical", show_edges=True, cmap="tab20", show_scalar_bar=True)
 
-3, 
+# +
+# geom_id = 16
+# subset = merged_msh.extract_cells(merged_msh.cell_data["gmsh:geometrical"] == geom_id)
+# subset.plot(show_edges=True)
 
 # +
 geom_ids = [3, 10]  # the IDs you want
@@ -847,7 +932,9 @@ geom_ids = [3, 10]  # the IDs you want
 mask = np.isin(merged_msh.cell_data["gmsh:geometrical"], geom_ids)
 subset = merged_msh.extract_cells(mask)
 
-subset.plot(show_edges=True, cmap="tab20", scalars="gmsh:geometrical")
+subset.plot(show_edges=True, cmap="tab20", scalars="gmsh:geometrical", cpos='xy')
 # -
+
+
 
 
