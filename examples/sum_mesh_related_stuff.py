@@ -744,16 +744,13 @@ mesh = meshio.Mesh(points=slab_grid.points, cells=cells)
 
 # Save in Gmsh 4.1 format
 meshio.write(f"{output_dir}sum_vol_from_top_surf_tet.msh", mesh, file_format="gmsh")
-
-# +
-# slab = pv.read(f"{output_dir}sum_vol_from_top_surf_tet.msh")
 # -
+
+slab = pv.read(f"{output_dir}sum_vol_from_top_surf_tet.msh")
 
 # loading spherical mesh from gmsh
 sph_msh = pv.read(f"{output_dir}uw_sos_ro1.0_ri0.87_lon52.0_lat47.0_csize0.016.msh")
 sph_msh.save(f"{output_dir}uw_sos_ro1.0_ri0.87_lon52.0_lat47.0_csize0.016.vtk")
-
-sph_msh
 
 print(sph_msh['gmsh:dim_tags'])
 print(np.unique(sph_msh['gmsh:dim_tags'][:,0]))
@@ -762,57 +759,50 @@ print(np.unique(sph_msh['gmsh:physical']))
 print(np.unique(sph_msh['gmsh:geometrical']))
 
 # +
-geom_ids = [11]  # the IDs you want
+geom_ids = [99999]  # the IDs you want
 
 mask = np.isin(sph_msh.cell_data['gmsh:physical'], geom_ids)
 subset = sph_msh.extract_cells(mask)
 
 subset.plot(show_edges=True, cmap="tab20", scalars='gmsh:physical', cpos='xy')
-# -
-
-print(type(sph_msh.cells))
 
 # +
-# Extract only 'tetra' elements
-volume_blocks = [i for i, block in enumerate(sph_msh.cells) if block.type == "tetra"]
-tetra_cells = [sph_msh.cells[i] for i in volume_blocks]
-tetra_tags = [sph_msh.cell_data['gmsh:physical'][i] for i in volume_blocks]
+# # Extract only 'tetra' elements
+# volume_blocks = [i for i, block in enumerate(sph_msh.cells) if block.type == "tetra"]
+# tetra_cells = [sph_msh.cells[i] for i in volume_blocks]
+# tetra_tags = [sph_msh.cell_data['gmsh:physical'][i] for i in volume_blocks]
 
-# Now filter for tag 11 in tetrahedra
-filtered_cells = []
-filtered_tags = []
+# # Now filter for tag 11 in tetrahedra
+# filtered_cells = []
+# filtered_tags = []
 
-for block, tags in zip(tetra_cells, tetra_tags):
-    mask = np.isin(tags, [11])
-    if np.any(mask):
-        filtered_cells.append(block.data[mask])
-        filtered_tags.append(tags[mask])
+# for block, tags in zip(tetra_cells, tetra_tags):
+#     mask = np.isin(tags, [11])
+#     if np.any(mask):
+#         filtered_cells.append(block.data[mask])
+#         filtered_tags.append(tags[mask])
 
-# Rebuild the subset mesh if any matches found
-if filtered_cells:
-    import pyvista as pv
-    subset = pv.UnstructuredGrid({("tetra", fc) for fc in filtered_cells}, sph_msh.points)
-    subset["gmsh:physical"] = np.concatenate(filtered_tags)
-    subset.plot(show_edges=True, scalars="gmsh:physical", cmap="tab20", cpos="xy")
-else:
-    print("No tetrahedra found with physical tag 11.")
+# # Rebuild the subset mesh if any matches found
+# if filtered_cells:
+#     import pyvista as pv
+#     subset = pv.UnstructuredGrid({("tetra", fc) for fc in filtered_cells}, sph_msh.points)
+#     subset["gmsh:physical"] = np.concatenate(filtered_tags)
+#     subset.plot(show_edges=True, scalars="gmsh:physical", cmap="tab20", cpos="xy")
+# else:
+#     print("No tetrahedra found with physical tag 11.")
 
 
 # +
-# Extract surfaces
-cap_surf = cap.extract_surface()
-slab_surf = slab.extract_surface()
+# # Extract surfaces
+# cap_surf = cap.extract_surface()
+# slab_surf = slab.extract_surface()
 
-combined = cap + slab  # union (non-conforming)
-combined.plot()
+# combined = cap + slab  # union (non-conforming)
+# combined.plot()
 
-# Save surfaces as STL (for Gmsh input)
-cap_surf.save(f'{output_dir}cap_surface.stl')
-slab_surf.save(f'{output_dir}slab_surface.stl')
-# -
-
-
-
+# # Save surfaces as STL (for Gmsh input)
+# cap_surf.save(f'{output_dir}cap_surface.stl')
+# slab_surf.save(f'{output_dir}slab_surface.stl')
 # +
 # def convert_stl_to_step_gmsh(stl_path, step_path):
 #     # Ensure paths are absolute and normalized
@@ -890,7 +880,7 @@ input_mesh = f'{output_dir}uw_sos_ro1.0_ri0.87_lon52.0_lat47.0_csize0.016.mesh'
 sol_file = f'{output_dir}spherical_cap_with_level_set.sol'
 output_mesh = f'{output_dir}uw_sos_ro1.0_ri0.87_lon52.0_lat47.0_csize0.016_mmg.mesh'
 
-os.system(f'mmg3d_O3 {input_mesh} -sol {sol_file} -ls -nr -hausd 0.001 -hgrad 1.7 -hmax 0.05 -out {output_mesh}')
+os.system(f'mmg3d_O3 {input_mesh} -sol {sol_file} -ls 0.008 -nr -hausd 0.001 -hgrad 1.7 -hmax 0.05 -out {output_mesh}')
 
 # +
 # os.system(f'mmg3d_O3 {output_mesh} -noinsert -noswap -nomove -nsd 3 ') #-out {output_mesh}')
@@ -927,12 +917,15 @@ np.unique(merged_msh['gmsh:geometrical'])
 # subset.plot(show_edges=True)
 
 # +
-geom_ids = [3, 10]  # the IDs you want
+geom_ids = [3, 10, 11, 13, 14, 15, 16]  # the IDs you want
 
 mask = np.isin(merged_msh.cell_data["gmsh:geometrical"], geom_ids)
 subset = merged_msh.extract_cells(mask)
 
-subset.plot(show_edges=True, cmap="tab20", scalars="gmsh:geometrical", cpos='xy')
+subset.plot(show_edges=True, cmap="tab20", scalars="gmsh:geometrical", cpos='xy',
+            off_screen=True,
+            window_size=(1400, 1000),  # control image resolution
+            screenshot="./output/test.png")
 # -
 
 
