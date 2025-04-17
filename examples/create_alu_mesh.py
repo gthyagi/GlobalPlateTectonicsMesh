@@ -311,6 +311,103 @@ pl.show(cpos='xy')
 
 # +
 # create volume from slab top surface
+ext_surf = alu_top_surf_mesh_mmg.extract_surface()
+ext_surf_with_normals = ext_surf.compute_normals(point_normals=True, cell_normals=False, auto_orient_normals=True)
+
+# Offset points along normals
+offset_distance = 0.005  # adjust as needed
+offset_points = ext_surf_with_normals.points - ext_surf_with_normals.point_normals * offset_distance
+
+# Create offset surface mesh (copy topology, new points)
+offset_surf = ext_surf_with_normals.copy()
+offset_surf.points = offset_points
+offset_surf['Normals'] = -offset_surf['Normals']
+# -
+
+# Create a PyVista point cloud
+point_cloud = pv.PolyData(np.vstack((ext_surf.points, offset_surf.points)))
+volume = point_cloud.delaunay_3d(alpha=8e-3)
+
+volume.plot()
+
+# +
+# Extract the surface of the volume mesh to get the alpha shape
+alpha_shape = volume.extract_geometry()
+
+# Save the full volumetric mesh
+# volume.save(f"{output_dir}sum_slab_mesh.vtk")
+# -
+
+alpha_shape.is_all_triangles, alpha_shape.is_manifold
+
+ext_surf_delaunay = ext_surf.delaunay_2d(alpha=0.002)
+print(ext_surf_delaunay.is_all_triangles)
+ext_surf_delaunay.plot()
+
+offset_surf_delaunay = offset_surf.delaunay_2d(alpha=0.002)
+print(offset_surf_delaunay.is_all_triangles)
+offset_surf_delaunay.plot()
+
+import tetgen
+
+# +
+# Create TetGen object with surface mesh
+tet = tetgen.TetGen(ext_surf_delaunay)
+
+# Create a volume by extruding in Z (or using offset points)
+tet.points = np.vstack([ext_surf_delaunay.points, offset_surf_delaunay.points])
+
+# Generate tetrahedral mesh
+tet.tetrahedralize(order=1, mindihedral=20, minratio=1.5)
+
+# # Extract PyVista mesh
+# volume = tet.grid
+
+
+# +
+import pygalmesh
+import numpy as np
+
+# Combine surface into single STL
+top = pv.PolyData(ext_surf_delaunay.points, ext_surf_delaunay.faces)
+bot = pv.PolyData(offset_surf_delaunay.points, offset_surf_delaunay.faces)
+
+# Combine and save
+combined = top.merge(bot)
+combined.save('./output/combined_surface.stl')
+
+# Use pygalmesh to create a volume
+class MyDomain(pygalmesh.DomainBase):
+    def __init__(self):
+        super().__init__()
+        self.mesh = pygalmesh.SurfaceMesh("combined_surface.stl")
+
+    def bounding_sphere_radius(self):
+        return 1.0  # adjust based on your geometry
+
+domain = MyDomain()
+mesh = pygalmesh.generate_mesh(
+    domain,
+    max_edge_size=0.01,
+    facet_angle=30,
+    cell_radius_edge_ratio=2.0,
+    verbose=True
+)
+
+# Export to .vtk or use in PyVista
+mesh.write("./output/output.vtu")
+volume = pv.read("./output/output.vtu")
+volume.plot()
+# -
+
+
+
+
+
+
+
+# +
+# create volume from slab top surface
 
 # Step 1: Load the open surface mesh
 surf = alu_top_surf_mesh_mmg.extract_surface()
