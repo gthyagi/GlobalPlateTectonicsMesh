@@ -39,6 +39,11 @@ remove_old_file = True
 
 # surface resolution: 'high' or 'low'
 resolution = 'high'
+# mmg parameters
+if resolution=='low':
+    hmax, hmin = 0.02, 0.019
+else:
+    hmax, hmin = 0.0018, 0.0017
 
 
 # -
@@ -277,12 +282,6 @@ os.system('open ./output/alu_top_surf_mesh.vtk')
 # Ensure the surface mesh has no boundary holes before passing it to MMG.
 check_irregular_boundary_points(alu_top_surf_mesh)
 
-# mmg parameters
-if resolution=='low':
-    hmax, hmin = 0.02, 0.019
-else:
-    hmax, hmin = 0.0015, 0.0014
-
 if remove_old_file:
     os.remove('./output/alu_top_surf_mesh_mmg.vtk')
 
@@ -315,330 +314,187 @@ ext_surf = alu_top_surf_mesh_mmg.extract_surface()
 ext_surf_with_normals = ext_surf.compute_normals(point_normals=True, cell_normals=False, auto_orient_normals=True)
 
 # Offset points along normals
-offset_distance = 0.005  # adjust as needed
+offset_distance = 0.018  # adjust as needed
 offset_points = ext_surf_with_normals.points - ext_surf_with_normals.point_normals * offset_distance
 
 # Create offset surface mesh (copy topology, new points)
 offset_surf = ext_surf_with_normals.copy()
 offset_surf.points = offset_points
 offset_surf['Normals'] = -offset_surf['Normals']
-# -
-
-# Create a PyVista point cloud
-point_cloud = pv.PolyData(np.vstack((ext_surf.points, offset_surf.points)))
-volume = point_cloud.delaunay_3d(alpha=8e-3)
-
-volume.plot()
 
 # +
-# Extract the surface of the volume mesh to get the alpha shape
-alpha_shape = volume.extract_geometry()
-
-# Save the full volumetric mesh
-# volume.save(f"{output_dir}sum_slab_mesh.vtk")
-# -
-
-alpha_shape.is_all_triangles, alpha_shape.is_manifold
-
+# creating delaunay surfaces
 ext_surf_delaunay = ext_surf.delaunay_2d(alpha=0.002)
 print(ext_surf_delaunay.is_all_triangles)
-ext_surf_delaunay.plot()
+# ext_surf_delaunay.plot()
 
 offset_surf_delaunay = offset_surf.delaunay_2d(alpha=0.002)
 print(offset_surf_delaunay.is_all_triangles)
-offset_surf_delaunay.plot()
+# offset_surf_delaunay.plot()
 
 # +
-# import tetgen
+# method 1 to create volume
 
-# # Create TetGen object with surface mesh
-# tet = tetgen.TetGen(ext_surf_delaunay)
+# 1. Extract and orient your top surface
+top = alu_top_surf_mesh_mmg.extract_surface()
+top = top.compute_normals(point_normals=True,
+                          cell_normals=False,
+                          auto_orient_normals=True)
 
-# # Create a volume by extruding in Z (or using offset points)
-# tet.points = np.vstack([ext_surf_delaunay.points, offset_surf_delaunay.points])
+# 2. Compute a single extrusion direction
+#    (mean of point normals, then normalize)
+mean_norm = top.point_normals.mean(axis=0)
+mean_norm /= np.linalg.norm(mean_norm)
 
-# # Generate tetrahedral mesh
-# tet.tetrahedralize(order=1, mindihedral=20, minratio=1.5)
+# 3. Extrude (this will build side walls and caps)
+offset_distance = 0.018  # whatever thickness you need
+extrusion_vector = -mean_norm * offset_distance
 
-# # # Extract PyVista mesh
-# # volume = tet.grid
+volume_surf_mesh = top.extrude(extrusion_vector, capping=True)
 
+# # 4. (Optional) inspect
+# volume_surf_mesh.plot(show_edges=True, color='lightgrey')
 
-# +
-# Combine surface into single STL
-top = pv.PolyData(ext_surf_delaunay.points, ext_surf_delaunay.faces)
-bot = pv.PolyData(offset_surf_delaunay.points, offset_surf_delaunay.faces)
+# Save a closed mesh for volume meshing →
+volume_surf_mesh.save("./output/alu_vol_surf_mean_norm.vtk")
 
-# Combine and save
-combined = top.merge(bot)
-combined.save('./output/combined_surface.stl')
-
-# +
-
-# Clean and make sure they are single surface
-top = ext_surf_delaunay.extract_surface().triangulate().clean()
-bottom = offset_surf_delaunay.extract_surface().triangulate().clean()
-
-# Flip one of them so normals align
-bottom.flip_normals()
-
-# Create side faces (walls) between corresponding boundary edges
-top_edges = top.extract_feature_edges(boundary_edges=True)
-bot_edges = bottom.extract_feature_edges(boundary_edges=True)
-
-# Ensure same number of boundary points and same order
-top_pts = top_edges.points
-bot_pts = bot_edges.points
-
-if len(top_pts) != len(bot_pts):
-    raise ValueError("Top and bottom edges have different number of boundary points")
-
-# Create side faces manually
-faces = []
-for i in range(len(top_pts) - 1):
-    # Each quad is made from 2 triangles
-    faces.append([3, i, i + 1, len(top_pts) + i])       # triangle 1
-    faces.append([3, i + 1, len(top_pts) + i + 1, len(top_pts) + i])  # triangle 2
-
-# Combine points and create the mesh
-points = np.vstack([top_pts, bot_pts])
-side_mesh = pv.PolyData(points, np.hstack(faces))
-
-# Merge with top and bottom surfaces
-watertight = top.merge(bottom).merge(side_mesh)
-watertight = watertight.clean()
-
-# Optional: Fill holes just in case
-watertight = watertight.fill_holes(1000.0)
-
-# Check watertightness
-print(f"Is manifold: {watertight.is_manifold}")
-print(f"Boundary edge points: {watertight.extract_feature_edges(boundary_edges=True).n_points}")
-
-# Save result
-watertight.save("watertight_slab.stl")
-
-# -
-
-# Make sure normals point outward
-top.compute_normals(auto_orient_normals=True, inplace=True)
-bottom.compute_normals(auto_orient_normals=True, inplace=True)
-
-
-# +
-def extract_loop(mesh):
-    """
-    Given a PolyData, extract the single largest boundary‐edge loop
-    as an ordered Nx3 numpy array of points.
-    """
-    # 1) get all boundary edges
-    edges = mesh.extract_feature_edges(
-        boundary_edges=True,
-        manifold_edges=False,
-        feature_edges=False,
-        non_manifold_edges=False,
+# 1) Extract just the outer shell, triangulate, clean, orient normals
+surface = (
+    volume_surf_mesh
+    .extract_surface()      # drop any volumetric cells
+    .triangulate()          # force all faces to be triangles
+    .clean()                # merge dupes, remove degenerate tris
+    .compute_normals(       # orient all triangles consistently outward
+        cell_normals=True,
+        point_normals=False,
+        auto_orient_normals=True,
+        consistent_normals=True,
+        inplace=False
     )
-    # 2) label connected components
-    labeled = edges.connectivity()
-    labels = labeled["RegionId"]  # one int per vertex
-    
-    # 3) find the label with the most points
-    uniq, counts = np.unique(labels, return_counts=True)
-    biggest = uniq[np.argmax(counts)]
-    
-    # 4) threshold back to that single loop
-    loop = labeled.threshold([biggest, biggest], scalars="RegionId")
-    pts = loop.points
-    
-    # 5) order points by a nearest‐neighbor walk
-    ordered, used = [0], {0}
-    for _ in range(len(pts) - 1):
-        last = ordered[-1]
-        dists = np.linalg.norm(pts - pts[last], axis=1)
-        dists[list(used)] = np.inf
-        nxt = np.argmin(dists)
-        ordered.append(nxt)
-        used.add(nxt)
-    return pts[ordered]
+)
 
+# sanity‐check
+print(f"#cells: {surface.n_cells}, #pts: {surface.n_points}")
+assert all(len(f)==3 for f in surface.faces.reshape(-1,4)[:,1:]), \
+    "Non-triangular face detected!"
 
-# ensure normals point outward (optional but recommended)
-top.compute_normals(auto_orient_normals=True, inplace=True)
-bottom.compute_normals(auto_orient_normals=True, inplace=True)
+# 2) Feed it into TetGen as a PLC (piecewise linear complex)
+tet = tetgen.TetGen(surface)
 
-# extract and re‐sample loops to the same number of points
-top_pts    = extract_loop(top)
-bot_pts    = extract_loop(bottom)
+# -p tells TetGen “this is a closed surface PLC”
+# optionally add -q for quality or -A to preserve region markers
+volume = tet.tetrahedralize(switches='-pa0.001q1.4')
 
-# resample both loops to N points (max of the two)
-N = max(len(top_pts), len(bot_pts))
-def resample_loop(pts, n):
-    seg     = np.linalg.norm(np.diff(pts, axis=0, append=[pts[0]]), axis=1)
-    cumlen  = np.concatenate([[0], np.cumsum(seg)])
-    total   = cumlen[-1]
-    us      = np.linspace(0, total, n, endpoint=False)
-    out_pts = []
-    for u in us:
-        i = np.searchsorted(cumlen, u) - 1
-        t = (u - cumlen[i]) / seg[i]
-        p = (1 - t) * pts[i] + t * pts[(i + 1) % len(pts)]
-        out_pts.append(p)
-    return np.array(out_pts)
+# 3) Grab your volumetric grid
+slab_grid = tet.grid
+print("Generated volume:", slab_grid)
 
-top_rs = resample_loop(top_pts, N)
-bot_rs = resample_loop(bot_pts, N)
-
-# build side‐wall quads
-all_pts = np.vstack([top_rs, bot_rs])
-faces = []
-for i in range(N):
-    j = (i + 1) % N
-    # quad = [4, top_i, top_j, bot_j, bot_i]
-    faces += [4, i, j, N + j, N + i]
-
-side_mesh = pv.PolyData(all_pts, np.array(faces, dtype=np.int64))
-
-# merge everything and clean
-watertight = top.merge(bottom).merge(side_mesh).clean(tolerance=1e-8)
-
-# sanity checks
-print("Manifold?   ", watertight.is_manifold)
-print("Open edges:", watertight.extract_feature_edges(boundary_edges=True).n_points)
-
-# write out
-watertight.save("watertight_slab.stl")
-
-
-# +
-# — 2) Measure the vertical offset (slab thickness) —
-#    Here we assume Z is up; adjust if needed.
-z_top    = np.mean(top.points[:, 2])
-z_bottom = np.mean(bottom.points[:, 2])
-thickness = z_top - z_bottom
-
-# — 3) Extrude the TOP surface DOWNWARDS by that thickness →
-#    this will automatically generate side walls and "cap" the bottom face
-watertight = top.extrude((0, 0, -thickness), capping=True).clean()
-
-# — 4) (Optional) reorient normals outward and final clean
-watertight.compute_normals(auto_orient_normals=True, inplace=True)
-watertight = watertight.clean(tolerance=1e-8)
-
-# — 5) Verify manifoldness and no open edges —
-print("Manifold?   ", watertight.is_manifold)
-print("Boundary edges left:", 
-      watertight.extract_feature_edges(boundary_edges=True).n_points)
-
-# — 6) Save a closed mesh for volume meshing →
-watertight.save("watertight_slab.stl")
-
-
-# +
-# top.extrude?
-
-# +
-# (1) Make sure they’re triangulated:
-ext_surf_delaunay = ext_surf_delaunay.triangulate().clean()
-offset_surf_delaunay = offset_surf_delaunay.triangulate().clean()
-
-# (2) Save to STL:
-ext_surf_delaunay.save("./output/top_surface.stl")
-offset_surf_delaunay.save("./output/bottom_surface.stl")
-
-
+# 4) Save / visualize
+slab_grid.save("./output/alu_vol_surf_mean_norm_tet.vtk")
 # +
 # create volume from slab top surface
 
 # Step 1: Load the open surface mesh
-surf = alu_top_surf_mesh_mmg.extract_surface()
+top_surf = alu_top_surf_mesh_mmg.extract_surface()
 
 # Step 2: Compute normals
-surf_with_normals = surf.compute_normals(point_normals=True, cell_normals=False, auto_orient_normals=True)
+top_surf_with_normals = top_surf.compute_normals(point_normals=True, cell_normals=False, auto_orient_normals=True)
 
 # Step 3: Offset points along normals
-offset_distance = 0.005  # adjust as needed
-offset_points = surf_with_normals.points - surf_with_normals.point_normals * offset_distance
+offset_distance = 0.018  # adjust as needed
+offset_points = top_surf_with_normals.points - top_surf_with_normals.point_normals * offset_distance
 
 # Step 4: Create offset surface mesh (copy topology, new points)
-offset_surf = surf_with_normals.copy()
+offset_surf = top_surf_with_normals.copy()
 offset_surf.points = offset_points
 offset_surf['Normals'] = -offset_surf['Normals']
 
 
-# Step 6: Stitch edges to form side walls
-# Combine the two surfaces
-combined = surf_with_normals + offset_surf
-
-# Extract boundary edges and form faces between old and new surfaces
-side_faces = []
-
-boundary = surf_with_normals.extract_feature_edges(
+# 1) Extract the two boundary‐only meshes
+top_bd = top_surf_with_normals.extract_feature_edges(
+    boundary_edges=True, feature_edges=False,
+    non_manifold_edges=False, manifold_edges=False
+)
+off_bd = offset_surf.extract_feature_edges(
     boundary_edges=True, feature_edges=False,
     non_manifold_edges=False, manifold_edges=False
 )
 
-# Build side faces by connecting corresponding boundary edges
-b_pts = boundary.lines.reshape((-1, 3))[:, 1:]  # ignore line header "2"
-for pt1, pt2 in b_pts:
-    pt1_new = pt1 + surf_with_normals.n_points
-    pt2_new = pt2 + surf_with_normals.n_points
-    # Create two triangles for the quad side
-    side_faces.append([3, pt1, pt2, pt2_new])
-    side_faces.append([3, pt1, pt2_new, pt1_new])
+# 2) Walk the lines array into an ordered loop of indices
+def get_ordered_loop(bd):
+    # bd.lines is a flat [2, i0, i1, 2, i1, i2, ...]
+    edges = bd.lines.reshape(-1, 3)[:, 1:]
+    adj = {}
+    for a, b in edges:
+        adj.setdefault(a, []).append(b)
+        adj.setdefault(b, []).append(a)
+    # start anywhere
+    start, nxt = edges[0]
+    loop = [start, nxt]
+    while True:
+        prev, curr = loop[-2], loop[-1]
+        nbrs = [p for p in adj[curr] if p != prev]
+        if not nbrs or nbrs[0] == loop[0]:
+            break
+        loop.append(nbrs[0])
+    return loop
 
-side_faces = np.hstack(side_faces)
+top_loop = get_ordered_loop(top_bd)
+off_loop = get_ordered_loop(off_bd)
+n = len(top_loop)
+assert n == len(off_loop), "boundary loops must match"
 
-# Create the side wall mesh
-side_mesh = pv.PolyData()
-side_mesh.points = np.vstack([surf_with_normals.points, offset_points])
-side_mesh.faces = side_faces
+# 3) Build the side‐wall faces, using only boundary points
+#    (shift offset indices by n to live alongside the top loop)
+faces = []
+for i in range(n):
+    i2 = (i + 1) % n
+    t0, t1 = top_loop[i],   top_loop[i2]
+    o0 = off_loop[i]  + n
+    o1 = off_loop[i2] + n
+    # two triangles per side quad
+    faces.append([3, t0, t1, o0])
+    faces.append([3, t1, o1, o0])
+faces = np.hstack(faces)
+
+# 4) Stack the two sets of boundary points into one array
+all_pts = np.vstack([ top_bd.points,  # indices 0 .. n-1
+                      off_bd.points ]) # indices n .. 2n-1
+
+# 5) Make your side‐wall mesh
+side_mesh = pv.PolyData(all_pts, faces)
 
 # Combine all to make a closed surface
-closed_shell = surf_with_normals + offset_surf + side_mesh
-
-# Optional: Convert to volume with TetGen
-# tet = pv.TetGen(closed_shell)
-# volume = tet.tetrahedralize()
-# volume.plot()
-
-# Visualize
-closed_shell.plot(show_edges=True, color='white', opacity=0.6)
-# side_mesh.plot()
+all_surfaces = top_surf_with_normals + side_mesh + offset_surf
+closed_shell = all_surfaces.triangulate()
 
 if closed_shell.is_manifold:
     print('Created volume is good for further operations')
 else:
     print('Created volume is not closed')
     
-closed_shell_2 = closed_shell.triangulate()
 
-# if remove_old_file:
-os.remove(f"{output_dir}alu_vol_from_top_surf.vtk")
+if remove_old_file:
+    os.remove(f"{output_dir}alu_vol_from_top_surf.vtk")
 
 if not os.path.isfile(f"{output_dir}alu_vol_from_top_surf.vtk"):
-    print(closed_shell_2.is_all_triangles)
-    
-    closed_shell_2.save(f"{output_dir}alu_vol_from_top_surf.vtk")
-    save_pyvista_to_mesh(closed_shell_2, f"{output_dir}alu_vol_from_top_surf.mesh")
+    closed_shell.save(f"{output_dir}alu_vol_from_top_surf.vtk")
+    save_pyvista_to_mesh(closed_shell, f"{output_dir}alu_vol_from_top_surf.mesh")
 else:
     print('volume already exists')
 
 os.system(f'open ./output/alu_vol_from_top_surf.vtk')
-# -
-# check volume mesh is manifold
-if not closed_shell_2.is_manifold:
-    raise RuntimeError("Non-manifold mesh detected.")
 
+# +
 # create volume mesh with TetGen
-tet = tetgen.TetGen(closed_shell_2)
-tet.make_manifold()
-volume = tet.tetrahedralize()
+tgen = tetgen.TetGen(closed_shell)
+tgen.make_manifold()
+slab_volume = tgen.tetrahedralize()
 
 # save as vtk
-slab_grid = tet.grid
-slab_grid.save(f"{output_dir}alu_vol_from_top_surf_tet.vtk")
+slab_volume_grid = tgen.grid
+slab_volume_grid.save(f"{output_dir}alu_vol_from_top_surf_tet.vtk")
 os.system(f'open {output_dir}alu_vol_from_top_surf_tet.vtk')
-
 # +
 # # plot half the slab
 # mask = np.logical_or(slab_grid.points[:, 0] < 0, slab_grid.points[:, 0] > 0.1)
@@ -897,7 +753,9 @@ subset = merged_msh.extract_cells(mask)
 
 subset.plot(show_edges=True, cmap="tab20", scalars="gmsh:geometrical", cpos='xy')
 # -
-
+import pyvista as pv
+sphere = pv.Sphere()
+sphere.save('my_mesh.stl', binary=False)
 
 
 

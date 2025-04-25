@@ -284,6 +284,8 @@ top_surf_pos_dep_arr[:, 2] *= -1
 print(top_surf_pos_dep_arr)
 # -
 
+print(bot_surf_pos_dep_arr[6000], top_surf_pos_dep_arr[6000])
+
 sph_top_surf = np.copy(dep_arr)
 sph_top_surf[:, 2] = 0.0
 sph_top_surf
@@ -299,6 +301,8 @@ print(sum_bot_surf_c_xyz)
 sph_top_surf_c_xyz = coord_trans.geo_lld_to_cubedsphere_xyz(sph_top_surf)
 print(sph_top_surf_c_xyz)
 # -
+
+print(sum_top_surf_c_xyz[6000], sum_bot_surf_c_xyz[6000])
 
 np.round(coord_trans.cubedsphere_xyz_to_geo_lld(sph_top_surf_c_xyz), 2)
 

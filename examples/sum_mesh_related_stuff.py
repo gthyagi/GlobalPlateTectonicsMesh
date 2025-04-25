@@ -924,10 +924,27 @@ subset = merged_msh.extract_cells(mask)
 
 subset.plot(show_edges=True, cmap="tab20", scalars="gmsh:geometrical", cpos='xy',
             off_screen=True,
-            window_size=(1400, 1000),  # control image resolution
+            window_size=(1000, 800),  # control image resolution
             screenshot="./output/test.png")
+# +
+import panel as pn
+pn.extension('vtk')
+
+plotter = pv.Plotter(off_screen=True, window_size=(1000, 800))
+# …add mesh, set camera…
+
+pane = plotter.show(jupyter_backend='panel', return_viewer=True)
+# wrap and save as self‐contained HTML
+pn.panel(pane).save("output/subset_plot.html", embed=True)
 # -
 
-
+import pyvista as pv
+from pyvista import examples
+mesh = examples.load_uniform()
+pl = pv.Plotter(shape=(1, 2))
+_ = pl.add_mesh(mesh, scalars='Spatial Point Data', show_edges=True)
+pl.subplot(0, 1)
+_ = pl.add_mesh(mesh, scalars='Spatial Cell Data', show_edges=True)
+pl.export_html('pv.html')
 
 

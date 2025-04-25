@@ -29,10 +29,24 @@ import plotly.graph_objects as go
 import webbrowser
 from pathlib import Path
 
+# +
 # output dir
 output_dir = './output/'
 os.makedirs(output_dir, exist_ok=True)
 
+# surface resolution: 'high' or 'low'
+resolution = 'high'
+# mmg parameters
+if resolution=='low':
+    hmax, hmin = 0.02, 0.019
+else:
+    hmax, hmin = 0.0015, 0.0014
+
+# when this is set to True then existing files will remove and new files will be created
+remove_old_file = True
+
+
+# -
 
 def remove_nan_rows(arr):
     '''
@@ -95,7 +109,6 @@ fig_slab, ax_slab = create_scatter_plot(sum_dep_arr, plt.cm.viridis_r.resampled(
 edges = ebp.alpha_shape(sum_dep_arr[:,0:2], alpha=0.04, only_outer=True)
 
 
-# nbi-prompt: write a it in a better form and make def
 def create_interactive_plot(lon, lat, depth, edges, output_dir):
     """
     Create an interactive plot with Plotly.
@@ -321,10 +334,10 @@ print(bot_surf_dep_arr)
 
 # +
 # Get the minimum and maximum values in lon and lat
-lon_min = np.min(slab2_data[:, 0])
-lon_max = np.max(slab2_data[:, 0])
-lat_min = np.min(slab2_data[:, 1])
-lat_max = np.max(slab2_data[:, 1])
+lon_min = np.min(sum_dep_xyz[:, 0])
+lon_max = np.max(sum_dep_xyz[:, 0])
+lat_min = np.min(sum_dep_xyz[:, 1])
+lat_max = np.max(sum_dep_xyz[:, 1])
 
 print(lon_min, lon_max, lat_min, lat_max)
 
@@ -501,16 +514,14 @@ if not os.path.isfile(f"{output_dir}sum_top_surf_mesh.vtk"):
 else:
     print('Slab top surface mesh file exists!')
 
-os.system('open ./output/sum_top_surf_mesh.vtk')
+if remove_old_file:
+    os.system('open ./output/sum_top_surf_mesh.vtk')
 
 # Ensure the surface mesh has no boundary holes before passing it to MMG.
 check_irregular_boundary_points(sum_top_surf_mesh)
 
-# mmg parameters
-hmax = 0.02 # 0.0015
-hmin = 0.019 # 0.0014
-
-# os.remove('./output/sum_top_surf_mesh_mmg.vtk')
+if remove_old_file:
+    os.remove('./output/sum_top_surf_mesh_mmg.vtk')
 
 # run mmg
 if not os.path.isfile(f'{output_dir}sum_top_surf_mesh_mmg.vtk'):
@@ -535,16 +546,14 @@ if not os.path.isfile(f"{output_dir}sum_bot_surf_mesh.vtk"):
 else:
     print('Slab bottom surface mesh file exists!')
 
-os.system('open ./output/sum_bot_surf_mesh.vtk')
+if remove_old_file:
+    os.system('open ./output/sum_bot_surf_mesh.vtk')
 
 # checking for holes in the surface
 check_irregular_boundary_points(sum_bot_surf_mesh)
 
-# mmg parameters
-hmax = 0.02 # 0.0015
-hmin = 0.019 # 0.0014
-
-# os.remove('./output/sum_bot_surf_mesh_mmg.vtk')
+if remove_old_file:
+    os.remove('./output/sum_bot_surf_mesh_mmg.vtk')
 
 # run mmg
 if not os.path.isfile(f'{output_dir}sum_bot_surf_mesh_mmg.vtk'):
@@ -605,14 +614,13 @@ surf = sum_top_surf_mesh_mmg.extract_surface()
 surf_with_normals = surf.compute_normals(point_normals=True, cell_normals=False, auto_orient_normals=True)
 
 # Step 3: Offset points along normals
-offset_distance = 0.01  # adjust as needed
+offset_distance = 0.018  # adjust as needed
 offset_points = surf_with_normals.points - surf_with_normals.point_normals * offset_distance
 
 # Step 4: Create offset surface mesh (copy topology, new points)
 offset_surf = surf_with_normals.copy()
 offset_surf.points = offset_points
 offset_surf['Normals'] = -offset_surf['Normals']
-
 
 # Step 6: Stitch edges to form side walls
 # Combine the two surfaces
@@ -643,44 +651,40 @@ side_mesh.points = np.vstack([surf_with_normals.points, offset_points])
 side_mesh.faces = side_faces
 
 # Combine all to make a closed surface
-closed_shell = surf_with_normals + offset_surf + side_mesh
-
-# Optional: Convert to volume with TetGen
-# tet = pv.TetGen(closed_shell)
-# volume = tet.tetrahedralize()
-# volume.plot()
+all_surfaces = surf_with_normals + offset_surf + side_mesh
+closed_shell = all_surfaces.triangulate()
 
 # Visualize
 closed_shell.plot(show_edges=True, color='white', opacity=0.6)
-# side_mesh.plot()
 
 if closed_shell.is_manifold:
     print('Created volume is good for further operations')
 else:
     print('Created volume is not closed')
     
-closed_shell_2 = closed_shell.triangulate()
-
-# os.remove(f"{output_dir}sum_vol_from_top_surf.vtk")
+if remove_old_file:
+    os.remove(f"{output_dir}sum_vol_from_top_surf.vtk")
 
 if not os.path.isfile(f"{output_dir}sum_vol_from_top_surf.vtk"):
-    print(closed_shell_2.is_all_triangles)
-    
-    closed_shell_2.save(f"{output_dir}sum_vol_from_top_surf.vtk")
-    save_pyvista_to_mesh(closed_shell_2, f"{output_dir}sum_vol_from_top_surf.mesh")
+    closed_shell.save(f"{output_dir}sum_vol_from_top_surf.vtk")
+    save_pyvista_to_mesh(closed_shell, f"{output_dir}sum_vol_from_top_surf.mesh")
 else:
     print('volume already exists')
 
 os.system(f'open ./output/sum_vol_from_top_surf.vtk')
-# -
+# +
 # create volume mesh with TetGen
-tet = tetgen.TetGen(closed_shell_2)
-volume = tet.tetrahedralize()
+tgen = tetgen.TetGen(closed_shell)
+tgen.make_manifold()
+slab_volume = tgen.tetrahedralize()
 
 # save as vtk
-slab_grid = tet.grid
-slab_grid.save(f"{output_dir}sum_vol_from_top_surf_tet.vtk")
+slab_volume_grid = tgen.grid
+slab_volume_grid.save(f"{output_dir}sum_vol_from_top_surf_tet.vtk")
 os.system(f'open {output_dir}sum_vol_from_top_surf_tet.vtk')
+# -
+
+
 
 # +
 # # plot half the slab
