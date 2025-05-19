@@ -18,18 +18,31 @@ os.makedirs(output_dir, exist_ok=True)
 
 
 # +
+# class surface_boundaries(Enum):
+#     slab_surface = 10
+#     Lower        = 11
+#     Upper        = 12
+#     East         = 13
+#     West         = 14
+#     South        = 15
+#     North        = 16
+
+# class element_tag(Enum):
+#     inside_slab  = 3
+#     outside_slab = 2
+    
 class surface_boundaries(Enum):
-    slab_surface = 10
-    Lower        = 11
-    Upper        = 12
-    East         = 13
-    West         = 14
-    South        = 15
-    North        = 16
+    slab_surface = 1
+    Lower        = 2
+    Upper        = 3
+    East         = 4
+    West         = 5
+    South        = 6
+    North        = 7
 
 class element_tag(Enum):
-    inside_slab  = 3
-    outside_slab = 2
+    inside_slab  = 8
+    outside_slab = 9
 
 
 # -
@@ -77,9 +90,9 @@ for label_name, label_val in label_info:
     with mesh.access(cell_tags, rho):
         cell_tags.data[local_cells] = label_val
         if label_val==8:
-            rho.data[local_cells] = 10.0
-        if label_val==9:
             rho.data[local_cells] = 1.0
+        if label_val==9:
+            rho.data[local_cells] = 0.0
 
 # +
 # plotting 
@@ -101,12 +114,10 @@ pl.add_mesh(
     show_edges=True,
     scalars="rho",
     cmap=plt.cm.tab10.resampled(3),
-    clim=[1, 3],
+    clim=[8, 10],
     show_scalar_bar=True
 )
 pl.show(cpos="xy")
-pl.camera.zoom(1.4)
-
 # -
 
 # Some useful coordinate stuff
@@ -122,10 +133,10 @@ stokes.constitutive_model = uw.constitutive_models.ViscousFlowModel
 stokes.constitutive_model.Parameters.viscosity = 1.0
 stokes.saddle_preconditioner = 1.0
 
-Gamma = mesh.Gamma
-Gamma
-
 # +
+# boundary conditions
+
+# Noslip
 # stokes.add_essential_bc(sympy.Matrix([0.0, 0.0, 0.0]), mesh.boundaries.Upper.name)
 # stokes.add_essential_bc(sympy.Matrix([0.0, 0.0, 0.0]), mesh.boundaries.Lower.name)
 # stokes.add_essential_bc(sympy.Matrix([0.0, 0.0, 0.0]), mesh.boundaries.East.name)
@@ -133,6 +144,8 @@ Gamma
 # stokes.add_essential_bc(sympy.Matrix([0.0, 0.0, 0.0]), mesh.boundaries.North.name)
 # stokes.add_essential_bc(sympy.Matrix([0.0, 0.0, 0.0]), mesh.boundaries.South.name)
 
+# Freeslip
+Gamma = mesh.Gamma
 stokes.add_natural_bc(10000 * Gamma.dot(v_soln.sym) *  Gamma, "Upper")
 stokes.add_natural_bc(10000 * Gamma.dot(v_soln.sym) *  Gamma, "Lower")
 stokes.add_natural_bc(10000 * Gamma.dot(v_soln.sym) *  Gamma, "North")
@@ -143,8 +156,6 @@ stokes.add_natural_bc(10000 * Gamma.dot(v_soln.sym) *  Gamma, "South")
 
 gravity_fn = -1.0 * unit_rvec
 stokes.bodyforce = rho.sym*gravity_fn
-
-stokes.bodyforce.sym
 
 # +
 # Stokes settings
@@ -196,5 +207,8 @@ if uw.mpi.size == 1:
                       cb_orient='horizontal', cb_axis_label='Velocity', cb_label_xpos=0.5, cb_label_ypos=-2.05, fformat='pdf', 
                       output_path=output_dir, fname='v_sol')
 # -
+# saving h5 and xdmf file
+mesh.petsc_save_checkpoint(index=0, meshVars=[v_soln, p_soln, rho, cell_tags], outputPath=os.path.relpath(output_dir)+'/output')
+
 
 

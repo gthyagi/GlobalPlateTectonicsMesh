@@ -29,6 +29,9 @@ import plotly.graph_objects as go
 import webbrowser
 from pathlib import Path
 
+import shutil
+from petsc4py import PETSc
+
 # +
 # output dir
 output_dir = './output/'
@@ -40,7 +43,7 @@ resolution = 'high'
 if resolution=='low':
     hmax, hmin = 0.02, 0.019
 else:
-    hmax, hmin = 0.0015, 0.0014
+    hmax, hmin = 0.0019, 0.0018 #0.0015, 0.0014
 
 # when this is set to True then existing files will remove and new files will be created
 remove_old_file = True
@@ -446,7 +449,35 @@ def convert_mesh_to_vtk(input_mesh_file, output_vtk_file):
     print(f"Converted '{input_mesh_file}' to '{output_vtk_file}'.")
 
 
-def run_mmgs_remesh(inputmesh, outputmesh, hmax=None, hmin=None, hausd=None, nosurf=True):
+def find_mmg(exe):
+    '''
+    Get mmg tools petsc path
+    '''
+    
+    # try system PATH
+    path = shutil.which(exe)
+    if path:
+        return path
+
+    # fallback to PETSc build dir via env
+    petsc_dir  = os.environ.get("PETSC_DIR", "")
+    petsc_arch = os.environ.get("PETSC_ARCH", "")
+    candidate = os.path.join(petsc_dir, petsc_arch, "bin", exe)
+    return candidate if os.path.isfile(candidate) else None
+
+
+# +
+# get mmg tools from petsc
+mmg2d_petsc = find_mmg('mmg2d_debug')
+mmgs_petsc = find_mmg('mmgs_debug')
+mmg3d_petsc = find_mmg('mmg3d_debug')
+
+print(mmg3d_petsc, '\n', mmg2d_petsc, '\n', mmgs_petsc)
+
+
+# -
+
+def run_mmgs_remesh(mmgs_petsc, inputmesh, outputmesh, hmax=None, hmin=None, hausd=None, nosurf=True):
     """
     Run the MMGS (surface remesher) command on a 3D surface mesh.
 
@@ -458,7 +489,7 @@ def run_mmgs_remesh(inputmesh, outputmesh, hmax=None, hmin=None, hausd=None, nos
     - hausd (float, optional): Hausdorff distance for surface approximation
     - nosurf (bool): Whether to preserve the existing surface geometry (default: True)
     """
-    cmd = ['mmgs_O3', inputmesh, '-o', outputmesh]
+    cmd = [mmgs_petsc, inputmesh, '-o', outputmesh]
 
     if nosurf:
         cmd.append('-nosurf')
@@ -526,7 +557,7 @@ if remove_old_file:
 # run mmg
 if not os.path.isfile(f'{output_dir}sum_top_surf_mesh_mmg.vtk'):
     save_pyvista_to_mesh(sum_top_surf_mesh, f'{output_dir}sum_top_surf_mesh.mesh')
-    run_mmgs_remesh(f'{output_dir}sum_top_surf_mesh.mesh', f'{output_dir}sum_top_surf_mesh_mmg.mesh', 
+    run_mmgs_remesh(mmgs_petsc, f'{output_dir}sum_top_surf_mesh.mesh', f'{output_dir}sum_top_surf_mesh_mmg.mesh', 
                     hmax=hmax, hmin=hmin, hausd=None)
     convert_mesh_to_vtk(f'{output_dir}sum_top_surf_mesh_mmg.mesh', f'{output_dir}sum_top_surf_mesh_mmg.vtk')
 else:
@@ -558,7 +589,7 @@ if remove_old_file:
 # run mmg
 if not os.path.isfile(f'{output_dir}sum_bot_surf_mesh_mmg.vtk'):
     save_pyvista_to_mesh(sum_bot_surf_mesh, f'{output_dir}sum_bot_surf_mesh.mesh')
-    run_mmgs_remesh(f'{output_dir}sum_bot_surf_mesh.mesh', f'{output_dir}sum_bot_surf_mesh_mmg.mesh', 
+    run_mmgs_remesh(mmgs_petsc, f'{output_dir}sum_bot_surf_mesh.mesh', f'{output_dir}sum_bot_surf_mesh_mmg.mesh', 
                     hmax=hmax, hmin=hmin, hausd=None)
     convert_mesh_to_vtk(f'{output_dir}sum_bot_surf_mesh_mmg.mesh', f'{output_dir}sum_bot_surf_mesh_mmg.vtk')
 else:
@@ -747,17 +778,16 @@ os.system(f'open {output_dir}sum_vol_from_top_surf_tet.vtk')
 
 # +
 # VTK_TETRA = 10 → 'tetra' in meshio
-cells = [("tetra", slab_grid.cells_dict[10])]
+cells = [("tetra", slab_volume_grid.cells_dict[10])]
 
 # Create meshio Mesh object
-mesh = meshio.Mesh(points=slab_grid.points, cells=cells)
+mesh = meshio.Mesh(points=slab_volume_grid.points, cells=cells)
 
 # Save in Gmsh 4.1 format
 meshio.write(f"{output_dir}sum_vol_from_top_surf_tet.msh", mesh, file_format="gmsh")
-
-# +
-# slab = pv.read(f"{output_dir}sum_vol_from_top_surf_tet.msh")
 # -
+
+slab = pv.read(f"{output_dir}sum_vol_from_top_surf_tet.msh")
 
 # loading spherical mesh from gmsh
 sph_msh = pv.read(f"{output_dir}uw_sos_ro1.0_ri0.87_lon52.0_lat47.0_csize0.016.msh")
@@ -783,37 +813,37 @@ subset.plot(show_edges=True, cmap="tab20", scalars='gmsh:physical', cpos='xy')
 print(type(sph_msh.cells))
 
 # +
-# Extract only 'tetra' elements
-volume_blocks = [i for i, block in enumerate(sph_msh.cells) if block.type == "tetra"]
-tetra_cells = [sph_msh.cells[i] for i in volume_blocks]
-tetra_tags = [sph_msh.cell_data['gmsh:physical'][i] for i in volume_blocks]
+# # Extract only 'tetra' elements
+# volume_blocks = [i for i, block in enumerate(sph_msh.cells) if block.type == "tetra"]
+# tetra_cells = [sph_msh.cells[i] for i in volume_blocks]
+# tetra_tags = [sph_msh.cell_data['gmsh:physical'][i] for i in volume_blocks]
 
-# Now filter for tag 11 in tetrahedra
-filtered_cells = []
-filtered_tags = []
+# # Now filter for tag 11 in tetrahedra
+# filtered_cells = []
+# filtered_tags = []
 
-for block, tags in zip(tetra_cells, tetra_tags):
-    mask = np.isin(tags, [11])
-    if np.any(mask):
-        filtered_cells.append(block.data[mask])
-        filtered_tags.append(tags[mask])
+# for block, tags in zip(tetra_cells, tetra_tags):
+#     mask = np.isin(tags, [11])
+#     if np.any(mask):
+#         filtered_cells.append(block.data[mask])
+#         filtered_tags.append(tags[mask])
 
-# Rebuild the subset mesh if any matches found
-if filtered_cells:
-    import pyvista as pv
-    subset = pv.UnstructuredGrid({("tetra", fc) for fc in filtered_cells}, sph_msh.points)
-    subset["gmsh:physical"] = np.concatenate(filtered_tags)
-    subset.plot(show_edges=True, scalars="gmsh:physical", cmap="tab20", cpos="xy")
-else:
-    print("No tetrahedra found with physical tag 11.")
+# # Rebuild the subset mesh if any matches found
+# if filtered_cells:
+#     import pyvista as pv
+#     subset = pv.UnstructuredGrid({("tetra", fc) for fc in filtered_cells}, sph_msh.points)
+#     subset["gmsh:physical"] = np.concatenate(filtered_tags)
+#     subset.plot(show_edges=True, scalars="gmsh:physical", cmap="tab20", cpos="xy")
+# else:
+#     print("No tetrahedra found with physical tag 11.")
 
 
 # +
 # Extract surfaces
-cap_surf = cap.extract_surface()
+cap_surf = sph_msh.extract_surface()
 slab_surf = slab.extract_surface()
 
-combined = cap + slab  # union (non-conforming)
+combined = sph_msh + slab  # union (non-conforming)
 combined.plot()
 
 # Save surfaces as STL (for Gmsh input)
@@ -900,7 +930,7 @@ input_mesh = f'{output_dir}uw_sos_ro1.0_ri0.87_lon52.0_lat47.0_csize0.016.mesh'
 sol_file = f'{output_dir}spherical_cap_with_level_set.sol'
 output_mesh = f'{output_dir}uw_sos_ro1.0_ri0.87_lon52.0_lat47.0_csize0.016_mmg.mesh'
 
-os.system(f'mmg3d_O3 {input_mesh} -sol {sol_file} -ls -nr -hausd 0.001 -hgrad 1.7 -hmax 0.05 -out {output_mesh}')
+os.system(f'{mmg3d_petsc} {input_mesh} -sol {sol_file} -ls 0.008 -nr -hausd 0.001 -hgrad 1.7 -hmax 0.05 -out {output_mesh}')
 
 # +
 # os.system(f'mmg3d_O3 {output_mesh} -noinsert -noswap -nomove -nsd 3 ') #-out {output_mesh}')

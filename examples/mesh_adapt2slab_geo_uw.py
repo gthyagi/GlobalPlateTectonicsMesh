@@ -35,7 +35,7 @@ r_o = 1.0
 r_i = (6371. - 800.)/6371.
 lon_ext = 52.0
 lat_ext = 47.0
-cellsize = 1/64
+cellsize = 1/32
 
 meshname = f'uw_sos_ro{r_o}_ri{np.round(r_i, 2)}_lon{lon_ext}_lat{lat_ext}_csize{np.round(cellsize, 3)}'
 
@@ -168,11 +168,9 @@ if uw.mpi.size == 1:
 
     pl.show()
 
-# +
 # # both methods for checking is not working
 # mesh.petsc_save_checkpoint(index=0, meshVars=[H, fault_distance], outputPath=output_dir)
-# mesh.write_timestep('test', meshUpdates=True, meshVars=[H, fault_distance], outputPath=output_dir, index=0, )
-# -
+mesh.write_timestep('test', meshUpdates=True, meshVars=[H, fault_distance], outputPath=output_dir, index=0, )
 
 # #### Call mesh adaption from uw
 
