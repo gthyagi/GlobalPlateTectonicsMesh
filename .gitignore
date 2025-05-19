@@ -7,3 +7,4 @@ examples/.meshes/
 examples/*.vtk
 examples/output
 examples/tetgen_1.6
+examples/__pycache__/
