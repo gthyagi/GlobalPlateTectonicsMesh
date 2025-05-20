@@ -64,9 +64,10 @@ sum_dep_arr = remove_nan_rows(sum_dep_xyz)
 sum_dep_arr[:, 2] *= -1
 print(sum_dep_arr)
 print(sum_dep_arr[:,2].min(), sum_dep_arr[:,2].max())
-
-
 # -
+
+sum_dep_xyz.shape
+
 
 def create_scatter_plot(data, colorbar, vmin, vmax, colorbar_title='Depth (km)', _central_lon=0):
     """
