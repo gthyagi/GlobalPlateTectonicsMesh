@@ -25,9 +25,10 @@ from scipy.spatial import cKDTree
 import tetgen
 import gmsh
 
-import plotly.graph_objects as go
-import webbrowser
-from pathlib import Path
+# +
+# import plotly.graph_objects as go
+# import webbrowser
+# from pathlib import Path
 
 # +
 # output dir

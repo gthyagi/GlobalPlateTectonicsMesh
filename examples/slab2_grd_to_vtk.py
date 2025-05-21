@@ -128,7 +128,8 @@ from matplotlib.lines import Line2D
 
 # +
 # Specify the directory containing your .grd files
-target_dir = '/Users/tgol0006/PlateTectonicsTools/Slab2_AComprehe/Slab2Distribute_Mar2018'
+# target_dir = '/Users/tgol0006/PlateTectonicsTools/Slab2_AComprehe/Slab2Distribute_Mar2018'
+target_dir = '/Users/tgol0006/Downloads/hal_surf_09.21_slab2_output'
 
 # Build the search pattern
 pattern = os.path.join(target_dir, '*.grd')
@@ -224,9 +225,9 @@ for file_path in dep_grd_files:
     key = os.path.basename(file_path)[:3]
     slab_dep_dict[key] = load_grd_to_arr(file_path, positive_z=True, verbose=False)
 
-# Example: inspect keys and one array
-print("Keys:", list(slab_dep_dict.keys()))
-print("Array for 'alu':", slab_dep_dict.get('alu'))
+# # Example: inspect keys and one array
+# print("Keys:", list(slab_dep_dict.keys()))
+# print("Array for 'alu':", slab_dep_dict.get('alu'))
 
 # +
 # Load clip boundaries
@@ -447,5 +448,47 @@ for key, slab_dep_arr in slab_dep_dict.items():
     # Check for boundary irregularities
     check_irregular_boundary_points(slab_top_surf_mesh)
     print('\n')
+
+# +
+# alu=0.003
+# sul=0.0025
+# -
+
+# create alphashape from point cloud
+for key, slab_dep_arr in slab_dep_dict.items():
+    if key=='hal':
+        print(f"Processing slab: {key}")
+        
+        # Convert lon/lat/depth to XYZ coordinates
+        slab_top_surf_xyz = ct.CoordinateTransformSphere().lld_to_xyz(slab_dep_arr)
+        
+        # Create a PyVista point cloud
+        slab_top_surf_pc = pv.PolyData(slab_top_surf_xyz)
+        
+        # Generate a 2D mesh via Delaunay triangulation with alpha parameter
+        slab_top_surf_mesh = slab_top_surf_pc.delaunay_2d(alpha=0.008)
+        
+        # # Optionally save the mesh for each slab
+        # mesh_filename = os.path.join(output_dir, f"{key}_slab_top_surf_mesh.vtk")
+        # if not os.path.isfile(mesh_filename):
+        #     slab_top_surf_mesh.save(mesh_filename)
+        #     print(f"Saved mesh for {key} to {mesh_filename}")
+        # else:
+        #     print(f"Mesh for {key} already exists: {mesh_filename}")
+        
+        # Check for boundary irregularities
+        check_irregular_boundary_points(slab_top_surf_mesh)
+        print('\n')
+
+        slab_top_surf_xyz = ct.CoordinateTransformSphere().lld_to_xyz(slab_dep_arr)
+    
+        # Convert the points to a PyVista point cloud
+        slab_top_surf_pc = pv.PolyData(slab_top_surf_xyz)
+        slab_top_surf_pc['depth'] = slab_dep_arr[:, 2]    
+
+plotter = pv.Plotter()
+plotter.add_mesh(slab_top_surf_mesh, color='white', opacity=0.5, show_edges=True)
+# plotter.add_points(slab_top_surf_pc, scalars='depth', cmap=plt.cm.viridis.resampled(14), point_size=5, render_points_as_spheres=True, clim=[0, 700])
+plotter.show()
 
 
