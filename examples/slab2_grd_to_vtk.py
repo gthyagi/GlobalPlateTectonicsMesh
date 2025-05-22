@@ -128,8 +128,8 @@ from matplotlib.lines import Line2D
 
 # +
 # Specify the directory containing your .grd files
-# target_dir = '/Users/tgol0006/PlateTectonicsTools/Slab2_AComprehe/Slab2Distribute_Mar2018'
-target_dir = '/Users/tgol0006/Downloads/hal_surf_09.21_slab2_output'
+target_dir = '/Users/tgol0006/PlateTectonicsTools/Slab2_AComprehe/Slab2Distribute_Mar2018'
+# target_dir = '/Users/tgol0006/Downloads/hal_surf_09.21_slab2_output'
 
 # Build the search pattern
 pattern = os.path.join(target_dir, '*.grd')
@@ -452,11 +452,16 @@ for key, slab_dep_arr in slab_dep_dict.items():
 # +
 # alu=0.003
 # sul=0.0025
+# puy=0.0025
+# sam=0.0025
+# hel=0.0025
+# ker=
+# hal=
 # -
 
 # create alphashape from point cloud
 for key, slab_dep_arr in slab_dep_dict.items():
-    if key=='hal':
+    if key=='ker':
         print(f"Processing slab: {key}")
         
         # Convert lon/lat/depth to XYZ coordinates
@@ -466,7 +471,7 @@ for key, slab_dep_arr in slab_dep_dict.items():
         slab_top_surf_pc = pv.PolyData(slab_top_surf_xyz)
         
         # Generate a 2D mesh via Delaunay triangulation with alpha parameter
-        slab_top_surf_mesh = slab_top_surf_pc.delaunay_2d(alpha=0.008)
+        slab_top_surf_mesh = slab_top_surf_pc.delaunay_2d(alpha=0.0047)
         
         # # Optionally save the mesh for each slab
         # mesh_filename = os.path.join(output_dir, f"{key}_slab_top_surf_mesh.vtk")
@@ -488,7 +493,7 @@ for key, slab_dep_arr in slab_dep_dict.items():
 
 plotter = pv.Plotter()
 plotter.add_mesh(slab_top_surf_mesh, color='white', opacity=0.5, show_edges=True)
-# plotter.add_points(slab_top_surf_pc, scalars='depth', cmap=plt.cm.viridis.resampled(14), point_size=5, render_points_as_spheres=True, clim=[0, 700])
+plotter.add_points(slab_top_surf_pc, scalars='depth', cmap=plt.cm.viridis.resampled(14), point_size=5, render_points_as_spheres=True, clim=[0, 700])
 plotter.show()
 
 
